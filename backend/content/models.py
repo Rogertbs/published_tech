@@ -103,6 +103,13 @@ class Publicacao(models.Model):
 
     class Meta:
         ordering = ["-publicado_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conteudo", "versao"],
+                condition=models.Q(retirado_em__isnull=True),
+                name="uniq_publicacao_ativa_conteudo_versao",
+            )
+        ]
 
     def __str__(self):
         return f"publicação de {self.conteudo.slug} ({self.publicado_em:%Y-%m-%d})"

@@ -138,7 +138,20 @@ class CicloEditorialTests(TestCase):
 
         conteudo.refresh_from_db()
         self.assertEqual(conteudo.estado, EstadoConteudo.RETIRADO)
+        self.assertIsNone(conteudo.versao_em_edicao_id)
         self.assertFalse(Publicacao.objects.filter(conteudo=conteudo, retirado_em__isnull=True).exists())
+
+    def test_publicar_versao_antiga_com_edicao_nova_rejeitada(self):
+        conteudo, v1 = self.publicar_v1()
+        services.editar(conteudo, titulo="v2", corpo="c2")
+        with self.assertRaises(ValueError):
+            services.publicar(conteudo, v1)
+
+    def test_aprovar_registra_regras_avaliadas(self):
+        _, versao = self.publicar_v1()
+        nova = Versao.objects.create(conteudo=versao.conteudo, titulo="v2")
+        services.aprovar(nova, regras_avaliadas=["evidencia", "orcamento"])
+        self.assertEqual(Aprovacao.objects.get(versao=nova).regras_avaliadas, ["evidencia", "orcamento"])
 
     def test_aprovacao_registra_origem_responsavel_e_timestamp(self):
         _, versao = self.publicar_v1()

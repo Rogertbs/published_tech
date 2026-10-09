@@ -1,6 +1,7 @@
-def registrar(acao, entidade, entidade_id, *, usuario=None, antes=None, depois=None):
-    from auditoria.models import AuditoriaAdministrativa
+from auditoria.models import AuditoriaAdministrativa
 
+
+def registrar(acao, entidade, entidade_id, *, usuario=None, antes=None, depois=None):
     return AuditoriaAdministrativa.objects.create(
         usuario=usuario,
         acao=acao,

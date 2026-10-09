@@ -3,11 +3,11 @@ import logging
 import redis
 from django.conf import settings
 from django.core.cache import cache
-from django.db import transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
-from content.models import Aprovacao, Conteudo, EstadoConteudo, Publicacao, Versao
 from auditoria import services as auditoria
+from content.models import Aprovacao, Conteudo, EstadoConteudo, Publicacao, Versao
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,13 @@ def invalidar_publico(conteudo: Conteudo) -> None:
         logger.warning("Não foi possível invalidar o cache de páginas no Redis.", exc_info=True)
 
 
+def _lock_conteudo(conteudo: Conteudo) -> Conteudo:
+    qs = Conteudo.objects.filter(pk=conteudo.pk)
+    if connection.vendor == "postgresql":
+        qs = qs.select_for_update()
+    return qs.get()
+
+
 def versao_publicavel(conteudo: Conteudo) -> Versao | None:
     versao = conteudo.versao_em_edicao
     if versao is not None and hasattr(versao, "aprovacao"):
@@ -53,28 +60,39 @@ def versao_publicavel(conteudo: Conteudo) -> Versao | None:
     return None
 
 
-def aprovar(versao: Versao, aprovador=None, origem: str = Aprovacao.Origem.HUMANO) -> Aprovacao:
+@transaction.atomic
+def aprovar(
+    versao: Versao,
+    aprovador=None,
+    origem: str = Aprovacao.Origem.HUMANO,
+    regras_avaliadas=None,
+) -> Aprovacao:
     aprovacao, _ = Aprovacao.objects.get_or_create(
         versao=versao,
-        defaults={"aprovador": aprovador, "origem": origem, "regras_avaliadas": []},
+        defaults={
+            "aprovador": aprovador,
+            "origem": origem,
+            "regras_avaliadas": regras_avaliadas or [],
+        },
     )
-    conteudo = versao.conteudo
+    conteudo = _lock_conteudo(versao.conteudo)
     conteudo.estado = (
         EstadoConteudo.PUBLICADO_EM_EDICAO if conteudo.esta_publicado else EstadoConteudo.APROVADO
     )
     conteudo.save(update_fields=["estado", "atualizado_em"])
     auditoria.registrar(
         "aprovar",
-        "Versao",
-        versao.pk,
+        "Conteudo",
+        conteudo.pk,
         usuario=aprovador,
-        depois={"origem": origem, "conteudo": conteudo.pk},
+        depois={"versao": versao.pk, "origem": origem, "regras_avaliadas": aprovacao.regras_avaliadas},
     )
     return aprovacao
 
 
 @transaction.atomic
 def editar(conteudo: Conteudo, *, titulo, resumo="", corpo="", usuario=None) -> Versao:
+    conteudo = _lock_conteudo(conteudo)
     versao = Versao.objects.create(
         conteudo=conteudo, titulo=titulo, resumo=resumo, corpo=corpo
     )
@@ -84,8 +102,9 @@ def editar(conteudo: Conteudo, *, titulo, resumo="", corpo="", usuario=None) -> 
     )
     conteudo.save(update_fields=["versao_em_edicao", "estado", "atualizado_em"])
     auditoria.registrar(
-        "editar", "Versao", versao.pk, usuario=usuario, depois={"conteudo": conteudo.pk}
+        "editar", "Conteudo", conteudo.pk, usuario=usuario, depois={"versao": versao.pk}
     )
+    transaction.on_commit(lambda: invalidar_publico(conteudo))
     return versao
 
 
@@ -96,8 +115,11 @@ def publicar(conteudo: Conteudo, versao: Versao, quando=None) -> Publicacao:
     if not hasattr(versao, "aprovacao"):
         raise ValueError("Somente uma versão aprovada pode ser publicada.")
 
-    quando = quando or timezone.now()
+    conteudo = _lock_conteudo(conteudo)
+    if conteudo.versao_em_edicao_id and versao.pk != conteudo.versao_em_edicao_id:
+        raise ValueError("A versão informada não é a versão em edição aprovada.")
 
+    quando = quando or timezone.now()
     ativa = Publicacao.objects.select_for_update().filter(
         conteudo=conteudo, retirado_em__isnull=True
     ).first()
@@ -107,9 +129,14 @@ def publicar(conteudo: Conteudo, versao: Versao, quando=None) -> Publicacao:
         if ativa is not None:
             ativa.retirado_em = quando
             ativa.save(update_fields=["retirado_em"])
-        publicacao = Publicacao.objects.create(
-            conteudo=conteudo, versao=versao, publicado_em=quando
-        )
+        try:
+            publicacao = Publicacao.objects.create(
+                conteudo=conteudo, versao=versao, publicado_em=quando
+            )
+        except IntegrityError:
+            publicacao = Publicacao.objects.get(
+                conteudo=conteudo, versao=versao, retirado_em__isnull=True
+            )
 
     conteudo.versao_publicada = versao
     conteudo.versao_em_edicao = None
@@ -137,12 +164,22 @@ def publicar(conteudo: Conteudo, versao: Versao, quando=None) -> Publicacao:
 
 @transaction.atomic
 def retirar(conteudo: Conteudo, quando=None) -> None:
+    conteudo = _lock_conteudo(conteudo)
     quando = quando or timezone.now()
     Publicacao.objects.filter(conteudo=conteudo, retirado_em__isnull=True).update(retirado_em=quando)
     conteudo.versao_publicada = None
+    conteudo.versao_em_edicao = None
     conteudo.publicado_em = None
     conteudo.estado = EstadoConteudo.RETIRADO
-    conteudo.save(update_fields=["versao_publicada", "publicado_em", "estado", "atualizado_em"])
+    conteudo.save(
+        update_fields=[
+            "versao_publicada",
+            "versao_em_edicao",
+            "publicado_em",
+            "estado",
+            "atualizado_em",
+        ]
+    )
 
     auditoria.registrar("retirar", "Conteudo", conteudo.pk)
     transaction.on_commit(lambda: invalidar_publico(conteudo))
