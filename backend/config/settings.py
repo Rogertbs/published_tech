@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "jobs",
     "sources",
     "ai",
+    "finance",
     "public",
 ]
 
@@ -116,3 +117,10 @@ AI_MODELO_PADRAO = os.environ.get("AI_MODELO_PADRAO", "meta-llama/llama-3.3-70b-
 AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS", "30"))
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+ORCAMENTO_DIARIO = os.environ.get("ORCAMENTO_DIARIO", "5")
+ORCAMENTO_MENSAL = os.environ.get("ORCAMENTO_MENSAL", "30")
+ORCAMENTO_MOEDA = os.environ.get("ORCAMENTO_MOEDA", "USD")
+ORCAMENTO_TIMEZONE = os.environ.get("ORCAMENTO_TIMEZONE", "America/Sao_Paulo")
+RESERVA_ORCAMENTO_TTL_SECONDS = int(os.environ.get("RESERVA_ORCAMENTO_TTL_SECONDS", "300"))
+AI_CUSTO_ESTIMADO_PADRAO = os.environ.get("AI_CUSTO_ESTIMADO_PADRAO", "0.02")

@@ -286,3 +286,8 @@ def definir_automatico(valor: bool) -> None:
     motor = ConfiguracaoMotor.get_solo()
     motor.automatico = valor
     motor.save(update_fields=["automatico", "atualizado_em"])
+
+
+def expirar_eventos(antes_de) -> int:
+    removidos, _ = EventoTarefa.objects.filter(criado_em__lt=antes_de).delete()
+    return removidos

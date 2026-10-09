@@ -39,6 +39,7 @@ class RespostaProvedor:
 class ProvedorIA:
     nome = ""
     modelo_padrao = ""
+    pago = False
 
     def gerar_texto(self, prompt: str, parametros: dict, modelo: str) -> RespostaProvedor:
         raise NotImplementedError
@@ -54,6 +55,7 @@ class MockProvedor(ProvedorIA):
 
 class OpenRouterProvedor(ProvedorIA):
     nome = "openrouter"
+    pago = True
 
     def __init__(self, api_key=None, base_url=None, modelo_padrao=None, http_post=None):
         self.api_key = api_key or getattr(settings, "OPENROUTER_API_KEY", None)

@@ -126,6 +126,21 @@ origem do custo).
   `incerto`).
 - Credenciais nunca são registradas na chamada nem expostas.
 
+## Orçamento e relatórios
+
+- Limites diário/mensal configuráveis (`ConfiguracaoOrcamento`; padrão **US$ 5/dia** e
+  **US$ 30/mês**), com fuso de fechamento `America/Sao_Paulo` (armazenamento UTC).
+- Antes de cada chamada paga, registra-se uma `ReservaOrcamento` (conservadora) e, após
+  a resposta, ela é **conciliada** com a chamada — sem dupla contagem (reserva ativa +
+  chamada conciliada). Ao estourar, a chamada é **bloqueada** e um `EventoOrcamento` é
+  registrado. Mock (gratuito) não reserva.
+- Publicar manualmente conteúdo já pronto **não** passa pelo orçamento.
+- Relatórios em `GET /api/relatorios/custos` (JSON) e `GET /api/relatorios/custos.csv`
+  (detalhe até a chamada), com filtros por período, provedor, modelo, finalidade,
+  status, tentativa, conteúdo e tarefa. O histórico financeiro (`ChamadaIA`) é
+  independente dos logs operacionais (`EventoTarefa`), que podem expirar sem afetar os
+  relatórios (`jobs.services.expirar_eventos`).
+
 ## Cache (render-once-and-cache)
 
 O HTML público é gerado uma vez e guardado no Redis **sem TTL**; só sai por

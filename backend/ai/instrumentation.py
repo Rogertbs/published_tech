@@ -69,9 +69,11 @@ def executar_texto(
     conteudo_id=None,
     correlacao: dict | None = None,
     tentativa: int = 1,
+    custo_estimado=None,
 ) -> RespostaIA:
     provedor = provedor or obter_provedor()
     modelo_solicitado = modelo or provedor.modelo_padrao
+    reserva = _reservar_se_pago(provedor, modelo_solicitado, custo_estimado)
     inicio = timezone.now()
     t0 = time.monotonic()
 
@@ -122,4 +124,21 @@ def executar_texto(
         origem_custo=origem_custo,
         erro=erro,
     )
+    if reserva is not None:
+        _conciliar(reserva, chamada)
     return RespostaIA(texto=(resposta.texto if resposta else ""), chamada=chamada)
+
+
+def _reservar_se_pago(provedor, modelo, custo_estimado):
+    if not getattr(provedor, "pago", False):
+        return None
+    from finance import services as orcamento
+
+    valor = custo_estimado if custo_estimado is not None else orcamento.estimativa_padrao()
+    return orcamento.reservar(valor, provedor=provedor.nome, modelo=modelo)
+
+
+def _conciliar(reserva, chamada):
+    from finance import services as orcamento
+
+    orcamento.conciliar(reserva, chamada)
