@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -14,7 +15,16 @@ from sources.connectors.base import (
 )
 
 API_URL = "https://api.github.com/search/repositories"
-API_VERSION = "2026-03-10"
+API_VERSION = os.environ.get("GITHUB_API_VERSION", "2026-03-10")
+LIMITE_QUERY = 256
+
+
+def _header(headers: dict, nome: str):
+    alvo = nome.lower()
+    for chave, valor in headers.items():
+        if chave.lower() == alvo:
+            return valor
+    return None
 
 
 def urllib_get(url: str, headers: dict, timeout: int = 10):
@@ -43,7 +53,10 @@ class GitHubConector(Conector):
             qualificadores.append(f"language:{parametros['language']}")
         if parametros.get("topic"):
             qualificadores.append(f"topic:{parametros['topic']}")
-        url = f"{API_URL}?q={'+'.join(qualificadores)}&sort=stars&order=desc&per_page={limite}"
+        consulta = "+".join(qualificadores)
+        if len(consulta) > LIMITE_QUERY:
+            raise ConectorError("Consulta do GitHub excede o limite de 256 caracteres.")
+        url = f"{API_URL}?q={consulta}&sort=stars&order=desc&per_page={limite}"
 
         headers = {
             "Accept": "application/vnd.github+json",
@@ -61,9 +74,8 @@ class GitHubConector(Conector):
     def _requisitar(self, url, headers, http_get, sleep, max_tentativas=3):
         for tentativa in range(1, max_tentativas + 1):
             status, headers_resposta, corpo = http_get(url, headers)
-            limite_atingido = status == 429 or (
-                status == 403 and headers_resposta.get("X-RateLimit-Remaining") == "0"
-            )
+            restantes = _header(headers_resposta, "X-RateLimit-Remaining")
+            limite_atingido = status == 429 or (status == 403 and restantes == "0")
             if limite_atingido:
                 if tentativa >= max_tentativas:
                     raise RateLimitPersistente("Limite de taxa do GitHub atingido.")
@@ -81,7 +93,7 @@ class GitHubConector(Conector):
 
     @staticmethod
     def _atraso(headers: dict, tentativa: int) -> int:
-        retry_after = headers.get("Retry-After")
+        retry_after = _header(headers, "Retry-After")
         if retry_after and str(retry_after).isdigit():
             return int(retry_after)
         return 2 ** tentativa
@@ -97,7 +109,7 @@ class GitHubConector(Conector):
                 "html_url": item.get("html_url"),
                 "description": item.get("description"),
                 "language": item.get("language"),
-                "licenca": licenca.get("spdx_id"),
+                "licenca": licenca.get("spdx_id") or "Desconhecida",
                 "estrelas": item.get("stargazers_count"),
                 "forks": item.get("forks_count"),
                 "issues_abertas": item.get("open_issues_count"),

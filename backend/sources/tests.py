@@ -4,7 +4,7 @@ import os
 from django.test import TestCase
 
 from sources import services
-from sources.models import Coleta, EstadoColeta, Fonte, RegistroNormalizado, TipoFonte
+from sources.models import Candidato, Coleta, EstadoColeta, Fonte, RegistroNormalizado, TipoFonte
 
 
 def item(repo_id, full_name, estrelas, pushed="2026-10-08T00:00:00Z"):
@@ -38,7 +38,7 @@ class ColetaTests(TestCase):
         defaults.update(kwargs)
         return Fonte.objects.create(nome=nome, **defaults)
 
-    def test_coletar_cria_registros(self):
+    def test_coletar_cria_registros_e_candidatos(self):
         fonte = self.fonte()
         itens = [item(1, "a/b", 100), item(2, "c/d", 50)]
 
@@ -47,6 +47,8 @@ class ColetaTests(TestCase):
         self.assertEqual(coleta.estado, EstadoColeta.OK)
         self.assertEqual(coleta.total_registros, 2)
         self.assertEqual(RegistroNormalizado.objects.filter(fonte=fonte).count(), 2)
+        self.assertEqual(Candidato.objects.count(), 2)
+        self.assertTrue(all(c.motivo for c in Candidato.objects.all()))
 
     def test_deduplicacao_por_chave_externa(self):
         fonte = self.fonte()
@@ -66,6 +68,22 @@ class ColetaTests(TestCase):
         self.assertEqual(resultado["coletas"], [])
         self.assertEqual(resultado["estado"], EstadoColeta.OK)
         self.assertEqual(RegistroNormalizado.objects.filter(fonte=fonte).count(), 1)
+
+    def test_coletar_fonte_desabilitada_levanta(self):
+        fonte = self.fonte(habilitada=False)
+        with self.assertRaises(services.FonteDesabilitada):
+            services.coletar(fonte, http_get=get_ok([]), sleep=lambda s: None)
+        self.assertEqual(RegistroNormalizado.objects.count(), 0)
+
+    def test_todas_falharem_estado_falhou(self):
+        self.fonte(nome="A", parametros={"min_estrelas": 1})
+        self.fonte(nome="B", parametros={"min_estrelas": 2})
+
+        def http_get(url, headers):
+            return 500, {}, "erro"
+
+        resultado = services.coletar_todas(http_get=http_get, sleep=lambda s: None)
+        self.assertEqual(resultado["estado"], EstadoColeta.FALHOU)
 
     def test_rate_limit_com_retry_volta_a_ok(self):
         fonte = self.fonte()

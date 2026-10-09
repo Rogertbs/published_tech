@@ -6,4 +6,6 @@ class SourcesConfig(AppConfig):
     name = "sources"
 
     def ready(self):
-        from sources import handlers  # noqa: F401
+        from sources.handlers import registrar
+
+        registrar()
