@@ -39,22 +39,39 @@ def _publicados():
 
 
 def _cached(key: str, builder):
-    data = cache.get(key)
+    try:
+        data = cache.get(key)
+    except Exception:
+        return builder()
     if data is not None:
         return data
 
     lock_key = f"{key}:lock"
-    if cache.add(lock_key, 1, timeout=10):
+    try:
+        adquiriu = cache.add(lock_key, 1, timeout=10)
+    except Exception:
+        return builder()
+
+    if adquiriu:
         try:
             data = builder()
-            cache.set(key, data, timeout=None)
+            try:
+                cache.set(key, data, timeout=None)
+            except Exception:
+                pass
             return data
         finally:
-            cache.delete(lock_key)
+            try:
+                cache.delete(lock_key)
+            except Exception:
+                pass
 
     for _ in range(20):
         time.sleep(0.05)
-        data = cache.get(key)
+        try:
+            data = cache.get(key)
+        except Exception:
+            return builder()
         if data is not None:
             return data
     return builder()

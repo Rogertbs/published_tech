@@ -52,6 +52,11 @@ cd backend
 python manage.py test
 ```
 
+Cobrem ciclo editorial, fila/worker/agendador, orçamento, fontes, pipeline, cache e,
+no pacote `tests/`, o **E2E** (coletar→selecionar→gerar→revisar→publicar→editar→cache→
+retirar→custos) e a **robustez** (cache indisponível, rascunho isolado, fonte
+indisponível, reserva concorrente com `SKIP LOCKED` — esta roda só no PostgreSQL).
+
 ## Fila, worker e agendador
 
 O container `backend` inicia, por padrão, um worker e um agendador em loop
