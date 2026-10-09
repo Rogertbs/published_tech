@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -12,21 +13,18 @@ def _json(payload, status=200):
     return JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
 
 
-def _resumo(tarefa: Tarefa) -> dict:
-    return {
-        "id": tarefa.pk,
-        "tipo": tarefa.tipo_tarefa,
-        "estado": tarefa.estado,
-        "origem": tarefa.origem,
-        "tentativas": tarefa.tentativas,
-        "resultado": tarefa.resultado,
-        "erro": tarefa.erro,
-    }
+def _autorizado(request) -> bool:
+    token = getattr(settings, "INTERNAL_API_TOKEN", None)
+    if not token:
+        return True
+    return request.headers.get("X-Internal-Token") == token
 
 
 @csrf_exempt
 @require_POST
 def execucoes(request):
+    if not _autorizado(request):
+        return _json({"detail": "Não autorizado."}, status=401)
     try:
         body = json.loads(request.body or "{}")
     except json.JSONDecodeError:
@@ -43,13 +41,15 @@ def execucoes(request):
     except services.MotorPausado:
         return _json({"detail": "Motor pausado: não é possível executar."}, status=409)
 
-    return _json({"criada": created, **_resumo(tarefa)}, status=202 if created else 200)
+    return _json({"criada": created, **tarefa.as_dict()}, status=202 if created else 200)
 
 
 @require_GET
 def execucao(request, pk):
+    if not _autorizado(request):
+        return _json({"detail": "Não autorizado."}, status=401)
     try:
         tarefa = Tarefa.objects.get(pk=pk)
     except Tarefa.DoesNotExist:
         return _json({"detail": "Execução não encontrada."}, status=404)
-    return _json(_resumo(tarefa))
+    return _json(tarefa.as_dict())

@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from jobs import services
@@ -10,6 +10,10 @@ from jobs.models import Agendamento, ConfiguracaoMotor, EstadoTarefa, OrigemTare
 
 def _handler_falha(tarefa):
     raise RuntimeError("boom")
+
+
+def _handler_observa(tarefa):
+    return {"estado_durante": Tarefa.objects.get(pk=tarefa.pk).estado}
 
 
 class FilaTests(TestCase):
@@ -29,6 +33,15 @@ class FilaTests(TestCase):
         eventos = list(tarefa.eventos.values_list("mensagem", flat=True))
         self.assertTrue(any("reservada" in e for e in eventos))
         self.assertIn("concluída", eventos)
+
+    def test_estado_em_execucao(self):
+        HANDLERS["observa"] = _handler_observa
+        try:
+            self.enfileirar(tipo_tarefa="observa")
+            services.processar_uma("w1")
+            self.assertEqual(Tarefa.objects.get().resultado["estado_durante"], EstadoTarefa.EM_EXECUCAO)
+        finally:
+            HANDLERS.pop("observa", None)
 
     def test_dois_workers_nao_reservam_a_mesma(self):
         self.enfileirar()
@@ -56,7 +69,19 @@ class FilaTests(TestCase):
         tarefa.refresh_from_db()
         self.assertEqual(tarefa.estado, EstadoTarefa.PENDENTE)
         self.assertIsNone(tarefa.reserva_token)
+        self.assertGreaterEqual(tarefa.tentativas, 1)
         self.assertIsNotNone(services.reservar_proxima("w2"))
+
+    def test_worker_antigo_nao_grava_apos_recuperacao(self):
+        self.enfileirar()
+        agora = timezone.now()
+        antiga = services.reservar_proxima("w1", agora=agora)
+        token_antigo = antiga.reserva_token
+        services.recuperar_abandonadas(agora=agora + timedelta(seconds=9999))
+        nova = services.reservar_proxima("w2")
+        self.assertNotEqual(token_antigo, nova.reserva_token)
+        with self.assertRaises(services.ReservaInvalida):
+            services.concluir(antiga, token_antigo, {})
 
     def test_lease_expirado_sem_tentativas_abandona(self):
         self.enfileirar(limite_tentativas=1)
@@ -79,14 +104,26 @@ class FilaTests(TestCase):
         finally:
             HANDLERS.pop("falha", None)
 
+    def test_agendador_exige_flag_automatico(self):
+        agora = timezone.now()
+        ag = Agendamento.objects.create(
+            tipo_tarefa="eco", intervalo_segundos=3600, proxima_execucao=agora
+        )
+        self.assertEqual(services.rodar_agendador(agora), 0)
+        self.assertFalse(Tarefa.objects.exists())
+
+        services.definir_automatico(True)
+        self.assertEqual(services.rodar_agendador(agora), 1)
+        self.assertTrue(Tarefa.objects.filter(chave_idempotencia=f"ag:{ag.pk}:{agora.isoformat()}").exists())
+
     def test_agendador_nao_duplica_ocorrencia(self):
+        services.definir_automatico(True)
         agora = timezone.now()
         ag = Agendamento.objects.create(
             tipo_tarefa="eco", intervalo_segundos=3600, proxima_execucao=agora
         )
         self.assertEqual(services.rodar_agendador(agora), 1)
         chave = f"ag:{ag.pk}:{agora.isoformat()}"
-        self.assertTrue(Tarefa.objects.filter(chave_idempotencia=chave).exists())
 
         ag.proxima_execucao = agora
         ag.save(update_fields=["proxima_execucao"])
@@ -104,13 +141,28 @@ class FilaTests(TestCase):
         )
         self.assertEqual(Tarefa.objects.filter(origem=OrigemTarefa.MANUAL).count(), 1)
 
-    def test_worker_nao_executa_automatica_pausada(self):
+    def test_pausa_nao_consome_tentativa(self):
         self.enfileirar(origem=OrigemTarefa.AUTOMATICO)
         motor = ConfiguracaoMotor.get_solo()
         motor.pausado = True
         motor.save(update_fields=["pausado", "atualizado_em"])
+
         self.assertFalse(services.processar_uma("w1"))
-        self.assertEqual(Tarefa.objects.get().estado, EstadoTarefa.PENDENTE)
+        tarefa = Tarefa.objects.get()
+        self.assertEqual(tarefa.estado, EstadoTarefa.PENDENTE)
+        self.assertEqual(tarefa.tentativas, 0)
+
+    def test_interrupcao_cooperativa(self):
+        tarefa = self.enfileirar(origem=OrigemTarefa.AUTOMATICO)
+        reservada = services.reservar_proxima("w1")
+        services.pausar()
+        reservada.refresh_from_db()
+        self.assertTrue(reservada.interrupcao_solicitada)
+
+        services.executar(reservada)
+        tarefa.refresh_from_db()
+        self.assertEqual(tarefa.estado, EstadoTarefa.PENDENTE)
+        self.assertFalse(tarefa.interrupcao_solicitada)
 
     def test_executar_agora_recusa_pausado(self):
         services.pausar()
@@ -156,3 +208,17 @@ class ApiExecucoesTests(TestCase):
         r = self.client.get(f"/api/execucoes/{tarefa.pk}")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["estado"], EstadoTarefa.PENDENTE)
+
+    @override_settings(INTERNAL_API_TOKEN="segredo")
+    def test_post_exige_token(self):
+        r = self.client.post(
+            "/api/execucoes", '{"tipo": "eco"}', content_type="application/json"
+        )
+        self.assertEqual(r.status_code, 401)
+        r = self.client.post(
+            "/api/execucoes",
+            '{"tipo": "eco"}',
+            content_type="application/json",
+            HTTP_X_INTERNAL_TOKEN="segredo",
+        )
+        self.assertEqual(r.status_code, 202)

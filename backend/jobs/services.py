@@ -17,6 +17,8 @@ from jobs.models import (
     Tarefa,
 )
 
+ATIVOS = [EstadoTarefa.RESERVADA, EstadoTarefa.EM_EXECUCAO]
+
 
 class ReservaInvalida(Exception):
     pass
@@ -36,6 +38,29 @@ def _backoff_seconds(tentativa: int) -> int:
     return base * (factor ** max(0, tentativa - 1))
 
 
+def _para_reserva(qs):
+    if connection.vendor == "postgresql":
+        return qs.select_for_update(skip_locked=True)
+    return qs
+
+
+def _reverter_para_fila(tarefa: Tarefa, token: str, *, erro=None, reagendar_para=None) -> int:
+    campos = dict(
+        estado=EstadoTarefa.PENDENTE,
+        reserva_token=None,
+        lease_expira_em=None,
+        worker="",
+        interrupcao_solicitada=False,
+    )
+    if reagendar_para is not None:
+        campos["agendado_para"] = reagendar_para
+    else:
+        campos["tentativas"] = max(0, tarefa.tentativas - 1)
+    if erro is not None:
+        campos["erro"] = erro
+    return Tarefa.objects.filter(pk=tarefa.pk, reserva_token=token, estado__in=ATIVOS).update(**campos)
+
+
 def registrar_evento(tarefa: Tarefa, mensagem: str, nivel: str = NivelEvento.INFO) -> None:
     EventoTarefa.objects.create(tarefa=tarefa, mensagem=mensagem, nivel=nivel)
 
@@ -46,10 +71,7 @@ def reservar_proxima(worker_id: str, agora=None) -> Tarefa | None:
         base = Tarefa.objects.filter(
             estado=EstadoTarefa.PENDENTE, agendado_para__lte=agora
         ).order_by("-prioridade", "agendado_para", "id")
-        if connection.vendor == "postgresql":
-            tarefa = base.select_for_update(skip_locked=True).first()
-        else:
-            tarefa = base.first()
+        tarefa = _para_reserva(base).first()
         if tarefa is None:
             return None
 
@@ -61,6 +83,7 @@ def reservar_proxima(worker_id: str, agora=None) -> Tarefa | None:
             lease_expira_em=agora + timedelta(seconds=_lease_seconds()),
             tentativas=tarefa.tentativas + 1,
             iniciado_em=agora,
+            interrupcao_solicitada=False,
         )
         if not atualizadas:
             return None
@@ -73,11 +96,7 @@ def reservar_proxima(worker_id: str, agora=None) -> Tarefa | None:
 def concluir(tarefa: Tarefa, token: str, resultado=None) -> None:
     if tarefa.reserva_token != token:
         raise ReservaInvalida("Token de reserva inválido para concluir.")
-    atualizadas = Tarefa.objects.filter(
-        pk=tarefa.pk,
-        reserva_token=token,
-        estado__in=[EstadoTarefa.RESERVADA, EstadoTarefa.EM_EXECUCAO],
-    ).update(
+    atualizadas = Tarefa.objects.filter(pk=tarefa.pk, reserva_token=token, estado__in=ATIVOS).update(
         estado=EstadoTarefa.CONCLUIDA,
         finalizado_em=timezone.now(),
         reserva_token=None,
@@ -94,25 +113,19 @@ def falhar(tarefa: Tarefa, token: str, erro: str) -> None:
     if tarefa.reserva_token != token:
         raise ReservaInvalida("Token de reserva inválido para falhar.")
     tarefa.refresh_from_db()
-    pode_retentar = tarefa.tentativas < tarefa.limite_tentativas
-    if pode_retentar:
+    if tarefa.tentativas < tarefa.limite_tentativas:
         quando = timezone.now() + timedelta(seconds=_backoff_seconds(tarefa.tentativas))
-        atualizadas = Tarefa.objects.filter(pk=tarefa.pk, reserva_token=token).update(
-            estado=EstadoTarefa.PENDENTE,
-            reserva_token=None,
-            lease_expira_em=None,
-            worker="",
-            agendado_para=quando,
-            erro=erro,
-        )
+        atualizadas = _reverter_para_fila(tarefa, token, erro=erro, reagendar_para=quando)
+        pode_retentar = True
     else:
-        atualizadas = Tarefa.objects.filter(pk=tarefa.pk, reserva_token=token).update(
+        atualizadas = Tarefa.objects.filter(pk=tarefa.pk, reserva_token=token, estado__in=ATIVOS).update(
             estado=EstadoTarefa.FALHOU,
             finalizado_em=timezone.now(),
             reserva_token=None,
             lease_expira_em=None,
             erro=erro,
         )
+        pode_retentar = False
     if not atualizadas:
         raise ReservaInvalida("Reserva não está mais ativa.")
     registrar_evento(tarefa, f"falhou: {erro}", nivel=NivelEvento.ERRO)
@@ -123,35 +136,51 @@ def falhar(tarefa: Tarefa, token: str, erro: str) -> None:
 def recuperar_abandonadas(agora=None) -> int:
     agora = agora or timezone.now()
     recuperadas = 0
-    qs = Tarefa.objects.filter(
-        estado__in=[EstadoTarefa.RESERVADA, EstadoTarefa.EM_EXECUCAO],
-        lease_expira_em__lt=agora,
-    )
+    qs = Tarefa.objects.filter(estado__in=ATIVOS, lease_expira_em__lt=agora)
     for tarefa in qs:
         if tarefa.tentativas >= tarefa.limite_tentativas:
-            Tarefa.objects.filter(pk=tarefa.pk).update(
+            atualizadas = Tarefa.objects.filter(
+                pk=tarefa.pk, reserva_token=tarefa.reserva_token, estado__in=ATIVOS
+            ).update(
                 estado=EstadoTarefa.ABANDONADA,
                 finalizado_em=agora,
                 reserva_token=None,
                 lease_expira_em=None,
+                interrupcao_solicitada=False,
             )
-            registrar_evento(tarefa, "abandonada (lease expirado, sem tentativas)", nivel=NivelEvento.ERRO)
+            mensagem, nivel = "abandonada (lease expirado, sem tentativas)", NivelEvento.ERRO
         else:
-            Tarefa.objects.filter(pk=tarefa.pk).update(
+            atualizadas = Tarefa.objects.filter(
+                pk=tarefa.pk, reserva_token=tarefa.reserva_token, estado__in=ATIVOS
+            ).update(
                 estado=EstadoTarefa.PENDENTE,
                 reserva_token=None,
                 lease_expira_em=None,
                 worker="",
+                interrupcao_solicitada=False,
             )
-            registrar_evento(tarefa, "devolvida à fila (lease expirado)")
-        recuperadas += 1
+            mensagem, nivel = "devolvida à fila (lease expirado)", NivelEvento.INFO
+        if atualizadas:
+            registrar_evento(tarefa, mensagem, nivel=nivel)
+            recuperadas += 1
     return recuperadas
 
 
 def executar(tarefa: Tarefa) -> None:
     token = tarefa.reserva_token
-    handler = get_handler(tarefa.tipo_tarefa)
+    if tarefa.interrupcao_solicitada:
+        _reverter_para_fila(tarefa, token)
+        registrar_evento(tarefa, "suspensa antes de executar (interrupção solicitada)")
+        return
+
+    atualizadas = Tarefa.objects.filter(
+        pk=tarefa.pk, reserva_token=token, estado=EstadoTarefa.RESERVADA
+    ).update(estado=EstadoTarefa.EM_EXECUCAO)
+    if not atualizadas:
+        raise ReservaInvalida("Reserva não está mais ativa.")
     registrar_evento(tarefa, "em execução")
+
+    handler = get_handler(tarefa.tipo_tarefa)
     if handler is None:
         falhar(tarefa, token, f"Sem handler registrado para '{tarefa.tipo_tarefa}'.")
         return
@@ -168,11 +197,10 @@ def processar_uma(worker_id: str | None = None, agora=None) -> bool:
     tarefa = reservar_proxima(worker_id, agora)
     if tarefa is None:
         return False
-    if tarefa.origem == OrigemTarefa.AUTOMATICO and ConfiguracaoMotor.get_solo().pausado:
-        Tarefa.objects.filter(pk=tarefa.pk).update(
-            estado=EstadoTarefa.PENDENTE, reserva_token=None, lease_expira_em=None, worker=""
-        )
-        registrar_evento(tarefa, "não executada: motor pausado")
+    motor = ConfiguracaoMotor.get_solo()
+    if (motor.pausado and tarefa.origem == OrigemTarefa.AUTOMATICO) or tarefa.interrupcao_solicitada:
+        _reverter_para_fila(tarefa, tarefa.reserva_token)
+        registrar_evento(tarefa, "suspensa (motor pausado)")
         return False
     executar(tarefa)
     return True
@@ -180,14 +208,15 @@ def processar_uma(worker_id: str | None = None, agora=None) -> bool:
 
 def rodar_agendador(agora=None) -> int:
     agora = agora or timezone.now()
-    if ConfiguracaoMotor.get_solo().pausado:
+    motor = ConfiguracaoMotor.get_solo()
+    if motor.pausado or not motor.automatico:
         return 0
 
     criadas = 0
     with transaction.atomic():
-        qs = Agendamento.objects.filter(ativo=True, proxima_execucao__lte=agora)
-        if connection.vendor == "postgresql":
-            qs = qs.select_for_update(skip_locked=True)
+        qs = _para_reserva(
+            Agendamento.objects.filter(ativo=True, proxima_execucao__lte=agora)
+        )
         for agendamento in qs:
             chave = f"ag:{agendamento.pk}:{agendamento.proxima_execucao.isoformat()}"
             _, created = Tarefa.objects.get_or_create(
@@ -231,12 +260,17 @@ def pausar() -> int:
     motor = ConfiguracaoMotor.get_solo()
     motor.pausado = True
     motor.save(update_fields=["pausado", "atualizado_em"])
+
+    Tarefa.objects.filter(estado__in=ATIVOS, origem=OrigemTarefa.AUTOMATICO).update(
+        interrupcao_solicitada=True
+    )
+
     pendentes = Tarefa.objects.filter(estado=EstadoTarefa.PENDENTE, origem=OrigemTarefa.AUTOMATICO)
     canceladas = 0
     for tarefa in pendentes:
-        tarefa.estado = EstadoTarefa.CANCELADA
-        tarefa.finalizado_em = timezone.now()
-        tarefa.save(update_fields=["estado", "finalizado_em", "atualizado_em"])
+        Tarefa.objects.filter(pk=tarefa.pk, estado=EstadoTarefa.PENDENTE).update(
+            estado=EstadoTarefa.CANCELADA, finalizado_em=timezone.now()
+        )
         registrar_evento(tarefa, "cancelada: motor pausado")
         canceladas += 1
     return canceladas
@@ -246,3 +280,9 @@ def ativar() -> None:
     motor = ConfiguracaoMotor.get_solo()
     motor.pausado = False
     motor.save(update_fields=["pausado", "atualizado_em"])
+
+
+def definir_automatico(valor: bool) -> None:
+    motor = ConfiguracaoMotor.get_solo()
+    motor.automatico = valor
+    motor.save(update_fields=["automatico", "atualizado_em"])

@@ -106,3 +106,5 @@ REDIS_URL = os.environ.get("REDIS_URL")
 JOBS_LEASE_SECONDS = int(os.environ.get("JOBS_LEASE_SECONDS", "60"))
 JOBS_BACKOFF_BASE = int(os.environ.get("JOBS_BACKOFF_BASE", "30"))
 JOBS_BACKOFF_FACTOR = int(os.environ.get("JOBS_BACKOFF_FACTOR", "4"))
+
+INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN")

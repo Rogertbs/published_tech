@@ -77,9 +77,13 @@ curl localhost:8010/api/execucoes/1
 
 - A fila fica no PostgreSQL, com reserva atômica (`SELECT ... FOR UPDATE SKIP LOCKED`)
   e `reserva_token`/lease. Sem Postgres, há um fallback seguro por update condicional.
-- Falhas técnicas têm retry com backoff (limite configurável por tarefa).
-- Pausar o motor (admin → Configuração do motor) cancela tarefas automáticas pendentes
-  e recusa novos disparos. Ativar reabilita.
+- Falhas técnicas têm retry com backoff (limite configurável por tarefa); lease expirado
+  devolve a tarefa à fila (a gravação do worker antigo é rejeitada pelo token).
+- O agendador só cria tarefas quando `automatico` estiver ligado e o motor não estiver
+  pausado. Pausar cancela pendentes automáticas e sinaliza interrupção das em execução;
+  "Executar agora" continua funcionando (independente do flag) e é recusado se pausado.
+- Se `INTERNAL_API_TOKEN` estiver definido, `POST/GET /api/execucoes` exige o header
+  `X-Internal-Token`.
 
 ## Cache (render-once-and-cache)
 

@@ -35,6 +35,7 @@ class Tarefa(models.Model):
     worker = models.CharField(max_length=128, blank=True, default="")
     reserva_token = models.CharField(max_length=64, null=True, blank=True)
     lease_expira_em = models.DateTimeField(null=True, blank=True)
+    interrupcao_solicitada = models.BooleanField(default=False)
     erro = models.TextField(blank=True, default="")
     resultado = models.JSONField(null=True, blank=True)
     chave_idempotencia = models.CharField(max_length=200, unique=True, null=True, blank=True)
@@ -47,6 +48,17 @@ class Tarefa(models.Model):
 
     def __str__(self):
         return f"Tarefa#{self.pk} {self.tipo_tarefa} [{self.estado}]"
+
+    def as_dict(self) -> dict:
+        return {
+            "id": self.pk,
+            "tipo": self.tipo_tarefa,
+            "estado": self.estado,
+            "origem": self.origem,
+            "tentativas": self.tentativas,
+            "resultado": self.resultado,
+            "erro": self.erro,
+        }
 
 
 class NivelEvento(models.TextChoices):
