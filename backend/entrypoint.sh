@@ -18,6 +18,8 @@ if [ -n "${DJANGO_SUPERUSER_USERNAME:-}" ]; then
   python manage.py createsuperuser --noinput 2>/dev/null || true
 fi
 
+python manage.py collectstatic --noinput >/dev/null
+
 if [ "${START_JOBS:-true}" = "true" ]; then
   python manage.py run_worker --loop &
   python manage.py run_scheduler --loop &
