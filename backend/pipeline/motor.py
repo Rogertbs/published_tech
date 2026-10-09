@@ -6,6 +6,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from ai import instrumentation
+from ai.models import ChamadaIA
 from configuracao import services as configuracao
 from content.models import Conteudo, EstadoConteudo, Item, Secao, TipoConteudo, Versao
 from finance.services import OrcamentoExcedido
@@ -38,8 +39,13 @@ class EstadoPipeline(TypedDict, total=False):
     motivo: str
 
 
-def _quantidade(secao: str) -> int:
-    campos = configuracao.resolver(secao=secao)
+def _campos_da_execucao(execucao, secao: str) -> dict:
+    if execucao.snapshot_config_id:
+        return dict(execucao.snapshot_config.campos)
+    return configuracao.resolver(secao=secao)
+
+
+def _quantidade(secao: str, campos: dict) -> int:
     if "quantidade_itens" in campos:
         return max(1, min(int(campos["quantidade_itens"]), 5))
     tipo = SECAO_TIPO.get(secao)
@@ -49,7 +55,7 @@ def _quantidade(secao: str) -> int:
     return 1
 
 
-def _selecionar_candidatos(secao: str) -> list[Candidato]:
+def _selecionar_candidatos(secao: str, campos: dict) -> list[Candidato]:
     qs = (
         Candidato.objects.filter(selecionado=True)
         .select_related("registro", "registro__fonte")
@@ -58,7 +64,7 @@ def _selecionar_candidatos(secao: str) -> list[Candidato]:
     tipo = SECAO_TIPO.get(secao)
     if tipo:
         qs = qs.filter(registro__fonte__tipo=tipo)
-    return list(qs[: _quantidade(secao)])
+    return list(qs[: _quantidade(secao, campos)])
 
 
 def _resumo_registro(dados: dict) -> str:
@@ -92,7 +98,8 @@ def etapa(nome):
 
 @etapa("selecionar")
 def no_selecionar(execucao, state):
-    candidatos = _selecionar_candidatos(state["secao"])
+    campos = _campos_da_execucao(execucao, state["secao"])
+    candidatos = _selecionar_candidatos(state["secao"], campos)
     return {"candidatos": [c.pk for c in candidatos]}
 
 
@@ -192,7 +199,7 @@ def no_salvar(execucao, state):
         "revisao": revisao,
     }
     if tipo == TipoConteudo.LISTA:
-        metadados["aviso_curadoria"] = AVISO_CURADORIA
+        metadados["aviso_curadoria"] = f"{AVISO_CURADORIA} Coleta em {timezone.now().date().isoformat()}."
     versao = Versao.objects.create(
         conteudo=conteudo,
         titulo=titulo,
@@ -204,6 +211,9 @@ def no_salvar(execucao, state):
     conteudo.versao_em_edicao = versao
     conteudo.save(update_fields=["versao_em_edicao", "atualizado_em"])
     Evidencia.objects.filter(pk__in=state.get("evidencias", [])).update(versao=versao)
+    ChamadaIA.objects.filter(execucao=execucao, conteudo_id__isnull=True).update(
+        conteudo_id=conteudo.pk
+    )
     return {
         "conteudo_id": conteudo.pk,
         "versao_id": versao.pk,
@@ -212,12 +222,24 @@ def no_salvar(execucao, state):
 
 
 def _criar_itens(versao: Versao, candidatos_ids: list) -> None:
-    candidatos = Candidato.objects.filter(pk__in=candidatos_ids).select_related(
-        "registro", "registro__fonte"
-    )
-    for ordem, candidato in enumerate(candidatos, start=1):
-        tipo_item = "repositorio" if candidato.registro.fonte.tipo == TipoFonte.GITHUB else "modelo"
-        Item.objects.create(versao=versao, ordem=ordem, tipo=tipo_item, dados=candidato.registro.dados)
+    candidatos = {
+        candidato.pk: candidato
+        for candidato in Candidato.objects.filter(pk__in=candidatos_ids).select_related(
+            "registro", "registro__fonte"
+        )
+    }
+    for ordem, candidato_id in enumerate(candidatos_ids, start=1):
+        candidato = candidatos.get(candidato_id)
+        if candidato is None:
+            continue
+        tipo_item = (
+            Item.TipoItem.REPOSITORIO
+            if candidato.registro.fonte.tipo == TipoFonte.GITHUB
+            else Item.TipoItem.MODELO
+        )
+        Item.objects.create(
+            versao=versao, ordem=ordem, tipo=tipo_item, dados=candidato.registro.dados
+        )
 
 
 def construir_grafo():

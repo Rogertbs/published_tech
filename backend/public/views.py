@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 
 from content.models import Conteudo, Secao, TipoConteudo
-from content.services import HOME_KEY, artigo_key, secao_key
+from content.services import HOME_KEY, artigo_key, item_key, secao_key
 
 
 def _resumo_item(conteudo: Conteudo) -> dict:
@@ -74,7 +74,7 @@ def home(request):
             "radar_hf": [i for i in lista if i["secao"] == Secao.RADAR_HF],
         }
 
-    return _json(_cached("public:home", build))
+    return _json(_cached(HOME_KEY, build))
 
 
 def secao(request, secao):
@@ -85,24 +85,24 @@ def secao(request, secao):
         itens = [_resumo_item(c) for c in _publicados().filter(secao=secao).order_by("-publicado_em")]
         return {"secao": secao, "itens": itens}
 
-    return _json(_cached(f"public:secao:{secao}", build))
+    return _json(_cached(secao_key(secao), build))
 
 
 def artigo(request, slug):
     def build():
         return _item_completo(get_object_or_404(_publicados(), slug=slug))
 
-    return _json(_cached(f"public:artigo:{slug}", build))
+    return _json(_cached(artigo_key(slug), build))
 
 
 def item(request, slug, ordem):
-    conteudo = get_object_or_404(_publicados(), slug=slug)
-    versao = conteudo.versao_publicada
-    registro = versao.itens.filter(ordem=ordem).first()
-    if registro is None:
-        return _json({"detail": "Item não encontrado."}, status=404)
-    return _json(
-        {
+    def build():
+        conteudo = get_object_or_404(_publicados(), slug=slug)
+        versao = conteudo.versao_publicada
+        registro = versao.itens.filter(ordem=ordem).first()
+        if registro is None:
+            return None
+        return {
             "conteudo": conteudo.slug,
             "secao": conteudo.secao,
             "titulo": versao.titulo,
@@ -111,4 +111,8 @@ def item(request, slug, ordem):
             "tipo": registro.tipo,
             "dados": registro.dados,
         }
-    )
+
+    data = _cached(item_key(slug, ordem), build)
+    if data is None:
+        return _json({"detail": "Item não encontrado."}, status=404)
+    return _json(data)

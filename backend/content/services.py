@@ -7,7 +7,7 @@ from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 from auditoria import services as auditoria
-from content.models import Aprovacao, Conteudo, EstadoConteudo, Publicacao, Versao
+from content.models import Aprovacao, Conteudo, EstadoConteudo, Item, Publicacao, Versao
 
 logger = logging.getLogger(__name__)
 
@@ -23,18 +23,27 @@ def artigo_key(slug: str) -> str:
     return f"public:artigo:{slug}"
 
 
+def item_key(slug: str, ordem: int) -> str:
+    return f"public:item:{slug}:{ordem}"
+
+
 def _page_cache_keys(conteudo: Conteudo) -> list[str]:
-    return [
+    chaves = [
         f"{PAGE_KEY_PREFIX}/",
         f"{PAGE_KEY_PREFIX}/secao/{conteudo.secao}",
         f"{PAGE_KEY_PREFIX}/artigo/{conteudo.slug}",
     ]
+    for ordem in range(1, 6):
+        chaves.append(f"{PAGE_KEY_PREFIX}/artigo/{conteudo.slug}/item/{ordem}")
+    return chaves
 
 
 def invalidar_publico(conteudo: Conteudo) -> None:
     cache.delete(HOME_KEY)
     cache.delete(secao_key(conteudo.secao))
     cache.delete(artigo_key(conteudo.slug))
+    for ordem in range(1, 6):
+        cache.delete(item_key(conteudo.slug, ordem))
 
     redis_url = getattr(settings, "REDIS_URL", None)
     if not redis_url:
@@ -91,11 +100,18 @@ def aprovar(
 
 
 @transaction.atomic
-def editar(conteudo: Conteudo, *, titulo, resumo="", corpo="", usuario=None) -> Versao:
+def editar(conteudo: Conteudo, *, titulo, resumo="", corpo="", usuario=None, itens=None) -> Versao:
     conteudo = _lock_conteudo(conteudo)
     versao = Versao.objects.create(
         conteudo=conteudo, titulo=titulo, resumo=resumo, corpo=corpo
     )
+    for ordem, item in enumerate(itens or [], start=1):
+        Item.objects.create(
+            versao=versao,
+            ordem=ordem,
+            tipo=item.get("tipo", Item.TipoItem.REPOSITORIO),
+            dados=item.get("dados", {}),
+        )
     conteudo.versao_em_edicao = versao
     conteudo.estado = (
         EstadoConteudo.PUBLICADO_EM_EDICAO if conteudo.esta_publicado else EstadoConteudo.RASCUNHO

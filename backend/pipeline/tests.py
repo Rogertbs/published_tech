@@ -33,6 +33,16 @@ def seed_github(registros):
     return fonte
 
 
+def seed_hf(registros):
+    fonte = Fonte.objects.create(nome="HF", tipo=TipoFonte.HUGGINGFACE, parametros={"selecao": 5})
+    for item in registros:
+        registro = RegistroNormalizado.objects.create(
+            fonte=fonte, chave_externa=item["id"], dados=item, coletado_em=timezone.now()
+        )
+        Candidato.objects.create(registro=registro, pontuacao=item.get("trendingScore", 0), selecionado=True)
+    return fonte
+
+
 class PipelineTests(TestCase):
     def test_gera_rascunho_com_evidencias(self):
         seed_github([dados("1", "org/a", estrelas=500), dados("2", "org/b", estrelas=100)])
@@ -157,3 +167,22 @@ class PipelineTests(TestCase):
 
         motor.executar_pipeline(secao="destaques-github")
         self.assertEqual(Versao.objects.get().itens.count(), 3)
+
+    def test_curadoria_hugging_face(self):
+        seed_hf(
+            [
+                {"id": "org/model", "url": "https://huggingface.co/org/model", "resumo": "m", "trendingScore": 100}
+            ]
+        )
+        motor.executar_pipeline(secao="radar-hf")
+
+        versao = Versao.objects.get()
+        self.assertEqual(versao.itens.get().tipo, "modelo")
+        self.assertIn("Curadoria própria", versao.metadados["aviso_curadoria"])
+        self.assertIn("Coleta em", versao.metadados["aviso_curadoria"])
+
+    def test_custo_por_postagem(self):
+        seed_github([dados("1", "org/a", estrelas=500)])
+        motor.executar_pipeline(secao="destaques-github")
+        conteudo = Conteudo.objects.get()
+        self.assertEqual(ChamadaIA.objects.get().conteudo_id, conteudo.pk)

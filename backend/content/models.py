@@ -79,9 +79,13 @@ class Versao(models.Model):
 
 
 class Item(models.Model):
+    class TipoItem(models.TextChoices):
+        REPOSITORIO = "repositorio", "Repositório"
+        MODELO = "modelo", "Modelo"
+
     versao = models.ForeignKey(Versao, on_delete=models.CASCADE, related_name="itens")
     ordem = models.PositiveIntegerField()
-    tipo = models.CharField(max_length=16, default="repositorio")
+    tipo = models.CharField(max_length=16, choices=TipoItem.choices, default=TipoItem.REPOSITORIO)
     dados = models.JSONField(default=dict)
     criado_em = models.DateTimeField(auto_now_add=True)
 

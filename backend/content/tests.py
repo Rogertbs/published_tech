@@ -153,6 +153,16 @@ class CicloEditorialTests(TestCase):
         services.aprovar(nova, regras_avaliadas=["evidencia", "orcamento"])
         self.assertEqual(Aprovacao.objects.get(versao=nova).regras_avaliadas, ["evidencia", "orcamento"])
 
+    def test_editar_com_itens_cria_nova_versao_de_itens(self):
+        conteudo, v1 = self.publicar_v1()
+        v2 = services.editar(
+            conteudo,
+            titulo="v2",
+            itens=[{"tipo": "repositorio", "dados": {"full_name": "org/a"}}],
+        )
+        self.assertEqual(v2.itens.count(), 1)
+        self.assertEqual(v2.itens.get().dados["full_name"], "org/a")
+
     def test_aprovacao_registra_origem_responsavel_e_timestamp(self):
         _, versao = self.publicar_v1()
         aprovacao = Aprovacao.objects.get(versao=versao)
