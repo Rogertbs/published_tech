@@ -4,6 +4,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 from ai.models import ChamadaIA
+from configuracao import services as cfg
+from configuracao.models import Configuracao, EscopoConfig
 from content.models import Conteudo, EstadoConteudo, Versao
 from pipeline import motor
 from pipeline.models import EstadoExecucao, EtapaExecucao, Evidencia, Execucao
@@ -22,7 +24,7 @@ def dados(id_, full_name, licenca="MIT", descricao="desc", estrelas=100):
 
 
 def seed_github(registros):
-    fonte = Fonte.objects.create(nome="GitHub", tipo=TipoFonte.GITHUB)
+    fonte = Fonte.objects.create(nome="GitHub", tipo=TipoFonte.GITHUB, parametros={"selecao": 5})
     for item in registros:
         registro = RegistroNormalizado.objects.create(
             fonte=fonte, chave_externa=item["id"], dados=item, coletado_em=timezone.now()
@@ -136,3 +138,22 @@ class PipelineTests(TestCase):
 
         self.assertIsNotNone(get_handler("pipeline"))
         self.assertIsNotNone(get_handler("coletar"))
+
+    def test_itens_estruturados_e_aviso(self):
+        seed_github([dados("1", "org/a", estrelas=500), dados("2", "org/b", estrelas=100)])
+        motor.executar_pipeline(secao="destaques-github")
+
+        versao = Versao.objects.get()
+        self.assertEqual(versao.itens.count(), 2)
+        item = versao.itens.first()
+        self.assertEqual(item.tipo, "repositorio")
+        self.assertEqual(item.dados["full_name"], "org/a")
+        self.assertIn("Curadoria própria", versao.metadados["aviso_curadoria"])
+
+    def test_quantidade_itens_configuravel(self):
+        seed_github([dados(str(i), f"org/{i}", estrelas=100 * i) for i in range(1, 5)])
+        geral = Configuracao.objects.create(chave="geral", escopo=EscopoConfig.GERAL)
+        cfg.criar_versao(geral, {"quantidade_itens": 3}, ativar=True)
+
+        motor.executar_pipeline(secao="destaques-github")
+        self.assertEqual(Versao.objects.get().itens.count(), 3)

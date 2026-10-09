@@ -2,7 +2,7 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from content import services
-from content.models import Conteudo, Secao, Versao
+from content.models import Conteudo, Item, Secao, Versao
 
 
 class PublicApiTests(TestCase):
@@ -98,3 +98,28 @@ class PublicApiTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             services.publicar(conteudo, v2)
         self.assertEqual(self.client.get("/api/publico/artigo/p1").json()["titulo"], "v2")
+
+    def test_curadoria_e_pagina_derivada_de_item(self):
+        conteudo = Conteudo.objects.create(
+            slug="curadoria-1", secao=Secao.DESTAQUES_GITHUB, tipo="lista"
+        )
+        versao = Versao.objects.create(
+            conteudo=conteudo,
+            titulo="Curadoria",
+            metadados={"aviso_curadoria": "Curadoria própria — não é ranking oficial."},
+        )
+        Item.objects.create(
+            versao=versao, ordem=1, tipo="repositorio", dados={"full_name": "org/a", "estrelas": 10}
+        )
+        services.aprovar(versao)
+        with self.captureOnCommitCallbacks(execute=True):
+            services.publicar(conteudo, versao)
+
+        artigo = self.client.get("/api/publico/artigo/curadoria-1").json()
+        self.assertEqual(len(artigo["itens"]), 1)
+        self.assertIn("Curadoria própria", artigo["aviso_curadoria"])
+
+        item = self.client.get("/api/publico/item/curadoria-1/1")
+        self.assertEqual(item.status_code, 200)
+        self.assertEqual(item.json()["dados"]["full_name"], "org/a")
+        self.assertEqual(self.client.get("/api/publico/item/curadoria-1/99").status_code, 404)

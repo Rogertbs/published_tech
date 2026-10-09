@@ -78,6 +78,23 @@ class Versao(models.Model):
         return hasattr(self, "aprovacao")
 
 
+class Item(models.Model):
+    versao = models.ForeignKey(Versao, on_delete=models.CASCADE, related_name="itens")
+    ordem = models.PositiveIntegerField()
+    tipo = models.CharField(max_length=16, default="repositorio")
+    dados = models.JSONField(default=dict)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["ordem"]
+        constraints = [
+            models.UniqueConstraint(fields=["versao", "ordem"], name="uniq_item_versao_ordem")
+        ]
+
+    def __str__(self):
+        return f"Item#{self.ordem} de {self.versao}"
+
+
 class Aprovacao(models.Model):
     class Origem(models.TextChoices):
         HUMANO = "humano", "Humano"

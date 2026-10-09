@@ -191,6 +191,19 @@ explícitas: `selecionar` → `evidencias` → `redigir` → `revisar` → `ilus
 - Toda ação (aprovar/editar/publicar/retirar) e alteração de config gera registro em
   `AuditoriaAdministrativa` (`auditoria` app).
 
+## Curadorias e páginas derivadas
+
+- Uma curadoria é **uma postagem por período** (`Conteudo` tipo `lista`) com **itens
+  estruturados** (`content.Item`) dentro da mesma versão — sem versão/aprovação própria
+  por item.
+- A **quantidade de itens** é configurável (`configuracao` `quantidade_itens`, ou
+  `Fonte.parametros.selecao`), de 1 a 5.
+- A seção declara **curadoria própria** (`aviso_curadoria`), nunca ranking oficial.
+- Cada item abre como **página derivada** da versão publicada:
+  `GET /api/publico/item/<slug>/<ordem>`.
+- Custo agregado por execução/postagem (`/api/relatorios/custos`: `por_execucao`,
+  `por_conteudo`), sem dupla contagem.
+
 ## Cache (render-once-and-cache)
 
 O HTML público é gerado uma vez e guardado no Redis **sem TTL**; só sai por

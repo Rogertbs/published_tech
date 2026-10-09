@@ -7,16 +7,17 @@ from langgraph.graph import END, START, StateGraph
 
 from ai import instrumentation
 from configuracao import services as configuracao
-from content.models import Conteudo, EstadoConteudo, Secao, TipoConteudo, Versao
+from content.models import Conteudo, EstadoConteudo, Item, Secao, TipoConteudo, Versao
 from finance.services import OrcamentoExcedido
 from pipeline.imagens import gerar_ilustracao
 from pipeline.models import EstadoExecucao, EtapaExecucao, Evidencia, Execucao
-from sources.models import Candidato, TipoFonte
+from sources.models import Candidato, Fonte, TipoFonte
 
 SECAO_TIPO = {
     Secao.DESTAQUES_GITHUB: TipoFonte.GITHUB,
     Secao.RADAR_HF: TipoFonte.HUGGINGFACE,
 }
+AVISO_CURADORIA = "Curadoria própria — não é ranking oficial de terceiros."
 PROMPT_PADRAO = "Redija uma análise curta em português, prática, com base apenas nas evidências."
 
 
@@ -37,6 +38,17 @@ class EstadoPipeline(TypedDict, total=False):
     motivo: str
 
 
+def _quantidade(secao: str) -> int:
+    campos = configuracao.resolver(secao=secao)
+    if "quantidade_itens" in campos:
+        return max(1, min(int(campos["quantidade_itens"]), 5))
+    tipo = SECAO_TIPO.get(secao)
+    fonte = Fonte.objects.filter(tipo=tipo, habilitada=True).order_by("id").first() if tipo else None
+    if fonte:
+        return max(1, min(int(fonte.parametros.get("selecao", 1)), 5))
+    return 1
+
+
 def _selecionar_candidatos(secao: str) -> list[Candidato]:
     qs = (
         Candidato.objects.filter(selecionado=True)
@@ -46,7 +58,7 @@ def _selecionar_candidatos(secao: str) -> list[Candidato]:
     tipo = SECAO_TIPO.get(secao)
     if tipo:
         qs = qs.filter(registro__fonte__tipo=tipo)
-    return list(qs[:5])
+    return list(qs[: _quantidade(secao)])
 
 
 def _resumo_registro(dados: dict) -> str:
@@ -174,17 +186,21 @@ def no_salvar(execucao, state):
     conteudo = Conteudo.objects.create(
         slug=f"{state['secao']}-{execucao.pk}", secao=state["secao"], tipo=tipo, estado=estado
     )
+    metadados = {
+        "evidencias": state.get("evidencias", []),
+        "imagem": state.get("imagem", {}),
+        "revisao": revisao,
+    }
+    if tipo == TipoConteudo.LISTA:
+        metadados["aviso_curadoria"] = AVISO_CURADORIA
     versao = Versao.objects.create(
         conteudo=conteudo,
         titulo=titulo,
         resumo=state.get("fonte_resumo", "")[:500],
         corpo=state.get("texto", ""),
-        metadados={
-            "evidencias": state.get("evidencias", []),
-            "imagem": state.get("imagem", {}),
-            "revisao": revisao,
-        },
+        metadados=metadados,
     )
+    _criar_itens(versao, state.get("candidatos", []))
     conteudo.versao_em_edicao = versao
     conteudo.save(update_fields=["versao_em_edicao", "atualizado_em"])
     Evidencia.objects.filter(pk__in=state.get("evidencias", [])).update(versao=versao)
@@ -193,6 +209,15 @@ def no_salvar(execucao, state):
         "versao_id": versao.pk,
         "motivo": "; ".join(revisao.get("motivos", [])),
     }
+
+
+def _criar_itens(versao: Versao, candidatos_ids: list) -> None:
+    candidatos = Candidato.objects.filter(pk__in=candidatos_ids).select_related(
+        "registro", "registro__fonte"
+    )
+    for ordem, candidato in enumerate(candidatos, start=1):
+        tipo_item = "repositorio" if candidato.registro.fonte.tipo == TipoFonte.GITHUB else "modelo"
+        Item.objects.create(versao=versao, ordem=ordem, tipo=tipo_item, dados=candidato.registro.dados)
 
 
 def construir_grafo():

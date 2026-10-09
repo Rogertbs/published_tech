@@ -6,4 +6,5 @@ urlpatterns = [
     path("home", views.home, name="public-home"),
     path("secao/<slug:secao>", views.secao, name="public-secao"),
     path("artigo/<slug:slug>", views.artigo, name="public-artigo"),
+    path("item/<slug:slug>/<int:ordem>", views.item, name="public-item"),
 ]

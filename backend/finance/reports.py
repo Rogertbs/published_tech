@@ -46,6 +46,7 @@ def resumo(filtros: dict | None = None) -> dict:
         "por_finalidade": _somar(qs, "finalidade"),
         "por_etapa": _somar(qs, "etapa"),
         "por_tarefa": {str(k): v for k, v in _somar(qs, "tarefa_id").items()},
+        "por_execucao": {str(k): v for k, v in _somar(qs, "execucao_id").items()},
         "por_conteudo": {str(k): v for k, v in _somar(qs, "conteudo_id").items()},
         "por_dia": por_dia,
     }

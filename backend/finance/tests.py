@@ -164,6 +164,14 @@ class RelatoriosTests(TestCase):
         self.assertEqual(dados["por_tarefa"][str(tarefa.pk)], Decimal("3.0"))
         self.assertEqual(dados["por_conteudo"]["7"], Decimal("3.0"))
 
+    def test_agrega_por_execucao(self):
+        from pipeline.models import Execucao
+
+        execucao = Execucao.objects.create()
+        self.criar("openrouter", Decimal("1.0"), execucao=execucao)
+        self.criar("openrouter", Decimal("2.0"), execucao=execucao)
+        self.assertEqual(resumo()["por_execucao"][str(execucao.pk)], Decimal("3.0"))
+
     def test_filtro_por_provedor(self):
         self.criar("openrouter", Decimal("1.0"))
         self.criar("mock", Decimal("5.0"))

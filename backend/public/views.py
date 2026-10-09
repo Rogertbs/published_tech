@@ -4,7 +4,8 @@ from django.core.cache import cache
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 
-from content.models import Conteudo, Secao
+from content.models import Conteudo, Secao, TipoConteudo
+from content.services import HOME_KEY, artigo_key, secao_key
 
 
 def _resumo_item(conteudo: Conteudo) -> dict:
@@ -21,7 +22,14 @@ def _resumo_item(conteudo: Conteudo) -> dict:
 
 def _item_completo(conteudo: Conteudo) -> dict:
     data = _resumo_item(conteudo)
-    data["corpo"] = conteudo.versao_publicada.corpo
+    versao = conteudo.versao_publicada
+    data["corpo"] = versao.corpo
+    if conteudo.tipo == TipoConteudo.LISTA:
+        data["aviso_curadoria"] = versao.metadados.get("aviso_curadoria", "")
+        data["itens"] = [
+            {"ordem": item.ordem, "tipo": item.tipo, "dados": item.dados}
+            for item in versao.itens.all()
+        ]
     return data
 
 
@@ -85,3 +93,22 @@ def artigo(request, slug):
         return _item_completo(get_object_or_404(_publicados(), slug=slug))
 
     return _json(_cached(f"public:artigo:{slug}", build))
+
+
+def item(request, slug, ordem):
+    conteudo = get_object_or_404(_publicados(), slug=slug)
+    versao = conteudo.versao_publicada
+    registro = versao.itens.filter(ordem=ordem).first()
+    if registro is None:
+        return _json({"detail": "Item não encontrado."}, status=404)
+    return _json(
+        {
+            "conteudo": conteudo.slug,
+            "secao": conteudo.secao,
+            "titulo": versao.titulo,
+            "aviso_curadoria": versao.metadados.get("aviso_curadoria", ""),
+            "ordem": registro.ordem,
+            "tipo": registro.tipo,
+            "dados": registro.dados,
+        }
+    )
