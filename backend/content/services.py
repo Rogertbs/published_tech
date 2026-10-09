@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from content.models import Aprovacao, Conteudo, EstadoConteudo, Publicacao, Versao
+from auditoria import services as auditoria
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +59,34 @@ def aprovar(versao: Versao, aprovador=None, origem: str = Aprovacao.Origem.HUMAN
         defaults={"aprovador": aprovador, "origem": origem, "regras_avaliadas": []},
     )
     conteudo = versao.conteudo
-    conteudo.estado = EstadoConteudo.APROVADO
+    conteudo.estado = (
+        EstadoConteudo.PUBLICADO_EM_EDICAO if conteudo.esta_publicado else EstadoConteudo.APROVADO
+    )
     conteudo.save(update_fields=["estado", "atualizado_em"])
+    auditoria.registrar(
+        "aprovar",
+        "Versao",
+        versao.pk,
+        usuario=aprovador,
+        depois={"origem": origem, "conteudo": conteudo.pk},
+    )
     return aprovacao
+
+
+@transaction.atomic
+def editar(conteudo: Conteudo, *, titulo, resumo="", corpo="", usuario=None) -> Versao:
+    versao = Versao.objects.create(
+        conteudo=conteudo, titulo=titulo, resumo=resumo, corpo=corpo
+    )
+    conteudo.versao_em_edicao = versao
+    conteudo.estado = (
+        EstadoConteudo.PUBLICADO_EM_EDICAO if conteudo.esta_publicado else EstadoConteudo.RASCUNHO
+    )
+    conteudo.save(update_fields=["versao_em_edicao", "estado", "atualizado_em"])
+    auditoria.registrar(
+        "editar", "Versao", versao.pk, usuario=usuario, depois={"conteudo": conteudo.pk}
+    )
+    return versao
 
 
 @transaction.atomic
@@ -99,6 +125,12 @@ def publicar(conteudo: Conteudo, versao: Versao, quando=None) -> Publicacao:
         ]
     )
 
+    auditoria.registrar(
+        "publicar",
+        "Conteudo",
+        conteudo.pk,
+        depois={"versao": versao.pk, "publicacao": publicacao.pk},
+    )
     transaction.on_commit(lambda: invalidar_publico(conteudo))
     return publicacao
 
@@ -112,4 +144,5 @@ def retirar(conteudo: Conteudo, quando=None) -> None:
     conteudo.estado = EstadoConteudo.RETIRADO
     conteudo.save(update_fields=["versao_publicada", "publicado_em", "estado", "atualizado_em"])
 
+    auditoria.registrar("retirar", "Conteudo", conteudo.pk)
     transaction.on_commit(lambda: invalidar_publico(conteudo))

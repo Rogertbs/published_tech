@@ -2,8 +2,8 @@ from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 
 from ai.prompts import envolver_fonte_como_dado
+from auditoria import services as auditoria
 from configuracao.models import (
-    AuditoriaAdministrativa,
     Configuracao,
     EscopoConfig,
     SnapshotConfiguracao,
@@ -24,13 +24,8 @@ PRESETS = {
 
 
 def registrar_auditoria(acao, entidade, entidade_id, *, usuario=None, antes=None, depois=None):
-    return AuditoriaAdministrativa.objects.create(
-        usuario=usuario,
-        acao=acao,
-        entidade=entidade,
-        entidade_id=str(entidade_id),
-        antes=antes,
-        depois=depois,
+    return auditoria.registrar(
+        acao, entidade, entidade_id, usuario=usuario, antes=antes, depois=depois
     )
 
 

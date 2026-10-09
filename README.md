@@ -179,6 +179,18 @@ explícitas: `selecionar` → `evidencias` → `redigir` → `revisar` → `ilus
 - `Execucao` registra estado, snapshot de configuração e erro; `ChamadaIA` fica ligada à
   execução.
 
+## Ciclo editorial
+
+- **Aprovação é por versão exata** (origem, responsável, regras avaliadas, timestamp);
+  editar invalida a aprovação anterior.
+- **Editar conteúdo publicado** (`content.services.editar`) cria nova versão e mantém a
+  **versão pública no ar** (`estado=publicado_em_edicao`) até a nova ser aprovada e
+  publicada — quando o ponteiro troca. **Retirar** cessa a exposição.
+- **Publicação idempotente** por `conteudo`+`versao` (não duplica; a anterior é
+  encerrada) e só para versão aprovada.
+- Toda ação (aprovar/editar/publicar/retirar) e alteração de config gera registro em
+  `AuditoriaAdministrativa` (`auditoria` app).
+
 ## Cache (render-once-and-cache)
 
 O HTML público é gerado uma vez e guardado no Redis **sem TTL**; só sai por

@@ -86,3 +86,15 @@ class PublicApiTests(TestCase):
 
         self.assertEqual(self.client.get("/api/publico/home").json()["artigos"], [])
         self.assertEqual(self.client.get("/api/publico/artigo/p1").status_code, 404)
+
+    def test_editar_publicado_serve_versao_antiga_ate_publicar(self):
+        conteudo, v1 = self.make_publicado(slug="p1", titulo="v1")
+        self.assertEqual(self.client.get("/api/publico/artigo/p1").json()["titulo"], "v1")
+
+        v2 = services.editar(conteudo, titulo="v2", corpo="c2")
+        self.assertEqual(self.client.get("/api/publico/artigo/p1").json()["titulo"], "v1")
+
+        services.aprovar(v2)
+        with self.captureOnCommitCallbacks(execute=True):
+            services.publicar(conteudo, v2)
+        self.assertEqual(self.client.get("/api/publico/artigo/p1").json()["titulo"], "v2")

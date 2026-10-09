@@ -3,14 +3,9 @@ from django.test import TestCase
 
 from ai.models import ChamadaIA
 from ai.providers import MockProvedor
+from auditoria.models import AuditoriaAdministrativa
 from configuracao import services
-from configuracao.models import (
-    AuditoriaAdministrativa,
-    Configuracao,
-    EscopoConfig,
-    SnapshotConfiguracao,
-    VersaoConfiguracao,
-)
+from configuracao.models import Configuracao, EscopoConfig, SnapshotConfiguracao, VersaoConfiguracao
 from content.models import Conteudo, Publicacao
 from jobs import services as jobs_services
 from jobs.models import Tarefa
