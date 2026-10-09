@@ -141,6 +141,22 @@ origem do custo).
   independente dos logs operacionais (`EventoTarefa`), que podem expirar sem afetar os
   relatórios (`jobs.services.expirar_eventos`).
 
+## Configuração e prompts
+
+- Configurações e prompts são **versionados** (`Configuracao` + `VersaoConfiguracao`):
+  criar, comparar, restaurar e ativar sem alterar o histórico. Alterar a config **não**
+  muda versões antigas.
+- **Precedência**: `sistema` define as regras obrigatórias (campos **protegidos**:
+  `exigir_evidencia`, `bloqueios_publicacao`, `orcamento_obrigatorio`, `texto_fonte_e_dado`);
+  `geral`, `secao` e `agente` só sobrescrevem os **campos permitidos**. Campo protegido
+  não pode ser definido fora do escopo `sistema`.
+- Cada execução pode registrar um **snapshot** (`capturar_snapshot`) com os campos
+  resolvidos e as versões efetivas usadas.
+- Prompt vazio é rejeitado; **texto de fonte** é sempre tratado como dado
+  (`montar_prompt_com_fonte`), nunca como instrução.
+- `testar_prompt` gera **prévia privada** (finalidade `teste_prompt`), sem publicar, com
+  custo contabilizado separadamente nos relatórios.
+
 ## Cache (render-once-and-cache)
 
 O HTML público é gerado uma vez e guardado no Redis **sem TTL**; só sai por

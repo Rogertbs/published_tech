@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     "sources",
     "ai",
     "finance",
+    "configuracao",
     "public",
 ]
 
