@@ -1,0 +1,31 @@
+---
+const nav = [
+  { href: "/", label: "Início" },
+  { href: "/secao/destaques-github", label: "Destaques GitHub" },
+  { href: "/secao/radar-hf", label: "Radar Hugging Face" },
+  { href: "/secao/artigos", label: "Artigos" },
+  { href: "/sobre", label: "Sobre" },
+];
+const current = Astro.url.pathname;
+---
+<header class="bg-principal text-texto-escuro">
+  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-3">
+    <a href="/" class="text-xl font-extrabold tracking-tight text-texto-escuro">Published Tech</a>
+    <nav aria-label="Seções">
+      <ul class="flex flex-wrap gap-4 text-sm font-semibold">
+        {nav.map((item) => (
+          <li>
+            <a
+              href={item.href}
+              aria-current={current === item.href ? "page" : undefined}
+              class:list={[
+                "text-texto-escuro/80 hover:text-complementar",
+                { "text-complementar": current === item.href },
+              ]}
+            >{item.label}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  </div>
+</header>

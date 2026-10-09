@@ -204,6 +204,16 @@ explícitas: `selecionar` → `evidencias` → `redigir` → `revisar` → `ilus
 - Custo agregado por execução/postagem (`/api/relatorios/custos`: `por_execucao`,
   `por_conteudo`), sem dupla contagem.
 
+## Frontend do site
+
+Astro + Tailwind v4, layout editorial (estrutura no estilo CNN) com a **paleta**:
+principal `#0F172A`, destaque `#2563EB`, complementar `#14B8A6`, fundo `#F8FAFC`,
+cards `#FFFFFF`, texto secundário `#475569`, bordas `#E2E8F0` (e tokens de modo escuro).
+Páginas: home, seção, artigo, item derivado (`/artigo/<slug>/item/<ordem>`), sobre e 404;
+sitemap em `/sitemap.xml`. Responsivo, foco visível, selo de transparência e metadados
+(title/description/canonical/OpenGraph). O HTML é servido por **render-once-and-cache**
+(Redis, sem TTL), invalidado por evento no backend.
+
 ## Cache (render-once-and-cache)
 
 O HTML público é gerado uma vez e guardado no Redis **sem TTL**; só sai por

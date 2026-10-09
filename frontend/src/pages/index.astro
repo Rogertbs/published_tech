@@ -1,9 +1,12 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import PostCard from "../components/PostCard.astro";
+import Kicker from "../components/Kicker.astro";
+import EmptyState from "../components/EmptyState.astro";
 import { getHome, formatDate } from "../lib/api";
 
 const home = await getHome();
-const artigoPrincipal = home.artigos[0] ?? null;
+const hero = home.artigos[0] ?? null;
 const demais = home.artigos.slice(1);
 const blocos = [
   { titulo: "Destaques GitHub", href: "/secao/destaques-github", itens: home.destaques_github },
@@ -11,43 +14,41 @@ const blocos = [
 ];
 const vazio = home.artigos.length === 0 && home.destaques_github.length === 0 && home.radar_hf.length === 0;
 ---
-<BaseLayout>
-  <h2>Últimas</h2>
+<BaseLayout title="Published Tech" description="Análises de IA, software e infraestrutura.">
   {vazio ? (
-    <p class="empty">Nenhum conteúdo publicado ainda.</p>
+    <EmptyState />
   ) : (
     <>
-      {artigoPrincipal && (
-        <section class="card hero">
-          <span class="kicker">Destaque</span>
-          <h3><a href={`/artigo/${artigoPrincipal.slug}`}>{artigoPrincipal.titulo}</a></h3>
-          <p>{artigoPrincipal.resumo}</p>
-          <p class="meta">{formatDate(artigoPrincipal.publicado_em)}</p>
+      {hero && (
+        <section class="mb-10">
+          <Kicker texto="Destaque" />
+          <a href={`/artigo/${hero.slug}`} class="group">
+            <h1 class="mt-1 text-3xl font-extrabold leading-tight text-principal group-hover:text-destaque sm:text-4xl">
+              {hero.titulo}
+            </h1>
+          </a>
+          {hero.resumo && <p class="mt-2 max-w-3xl text-lg text-texto-sec">{hero.resumo}</p>}
+          <p class="mt-1 text-sm text-texto-sec">{formatDate(hero.publicado_em)}</p>
         </section>
       )}
-      <div class="grid">
-        {demais.map((item) => (
-          <article class="card">
-            <span class="kicker">{item.secao}</span>
-            <h3><a href={`/artigo/${item.slug}`}>{item.titulo}</a></h3>
-            <p class="meta">{formatDate(item.publicado_em)}</p>
-          </article>
-        ))}
-      </div>
+
+      <section>
+        <h2 class="mb-4 border-b border-borda pb-1 text-xl font-bold text-principal">Últimas</h2>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {demais.map((item) => <PostCard item={item} />)}
+        </div>
+      </section>
+
       {blocos.map((bloco) => (
-        <section>
-          <h2><a href={bloco.href}>{bloco.titulo}</a></h2>
+        <section class="mt-12">
+          <h2 class="mb-4 border-b border-borda pb-1 text-xl font-bold text-principal">
+            <a href={bloco.href} class="hover:text-destaque">{bloco.titulo}</a>
+          </h2>
           {bloco.itens.length === 0 ? (
-            <p class="empty">Sem itens por enquanto.</p>
+            <EmptyState texto="Sem itens por enquanto." />
           ) : (
-            <div class="grid">
-              {bloco.itens.map((item) => (
-                <article class="card">
-                  <span class="kicker">{bloco.titulo}</span>
-                  <h3><a href={`/artigo/${item.slug}`}>{item.titulo}</a></h3>
-                  <p class="meta">{formatDate(item.publicado_em)}</p>
-                </article>
-              ))}
+            <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {bloco.itens.map((item) => <PostCard item={item} />)}
             </div>
           )}
         </section>

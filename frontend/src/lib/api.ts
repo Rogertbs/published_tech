@@ -19,6 +19,10 @@ export function getArtigo(slug) {
   return getJson(`/api/publico/artigo/${slug}`);
 }
 
+export function getItem(slug, ordem) {
+  return getJson(`/api/publico/item/${slug}/${ordem}`);
+}
+
 export function formatDate(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });

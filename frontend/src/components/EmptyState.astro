@@ -1,0 +1,7 @@
+---
+interface Props {
+  texto?: string;
+}
+const { texto = "Nada publicado por aqui ainda." } = Astro.props;
+---
+<p class="py-6 text-texto-sec">{texto}</p>

@@ -1,0 +1,22 @@
+---
+interface Props {
+  slug: string;
+  ordem: number;
+  dados: Record<string, any>;
+}
+const { slug, ordem, dados } = Astro.props;
+const nome = dados.full_name || dados.id || `Item ${ordem}`;
+const url = dados.html_url || dados.url;
+---
+<article class="rounded-lg border border-borda bg-card p-4">
+  <span class="text-xs font-bold uppercase tracking-wide text-complementar">#{ordem}</span>
+  <h3 class="mt-1 text-base font-bold">
+    <a href={`/artigo/${slug}/item/${ordem}`} class="hover:text-destaque">{nome}</a>
+  </h3>
+  {dados.description && <p class="mt-1 text-sm text-texto-sec">{dados.description}</p>}
+  {url && (
+    <a href={url} rel="noopener" class="mt-2 inline-block text-xs font-semibold text-destaque hover:underline">
+      Ver original
+    </a>
+  )}
+</article>

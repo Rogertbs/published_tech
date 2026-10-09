@@ -1,27 +1,22 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { getSecao, formatDate } from "../../lib/api";
+import PostCard from "../../components/PostCard.astro";
+import EmptyState from "../../components/EmptyState.astro";
+import { getSecao } from "../../lib/api";
 
 const { secao } = Astro.params;
 const data = await getSecao(secao);
-
 if (!data) {
   return Astro.redirect("/404");
 }
 ---
 <BaseLayout title={`Seção: ${secao}`}>
-  <h1>{secao}</h1>
+  <h1 class="mb-4 border-b border-borda pb-2 text-2xl font-extrabold text-principal">{secao}</h1>
   {data.itens.length === 0 ? (
-    <p class="empty">Sem conteúdo publicado nesta seção.</p>
+    <EmptyState texto="Sem conteúdo publicado nesta seção." />
   ) : (
-    <div class="grid">
-      {data.itens.map((item) => (
-        <article class="card">
-          <h3><a href={`/artigo/${item.slug}`}>{item.titulo}</a></h3>
-          <p>{item.resumo}</p>
-          <p class="meta">{formatDate(item.publicado_em)}</p>
-        </article>
-      ))}
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {data.itens.map((item) => <PostCard item={item} />)}
     </div>
   )}
 </BaseLayout>

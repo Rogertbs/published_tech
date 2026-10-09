@@ -1,0 +1,13 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description = "Análises de IA, software e infraestrutura." } = Astro.props;
+---
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={Astro.url.href} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:type" content="website" />

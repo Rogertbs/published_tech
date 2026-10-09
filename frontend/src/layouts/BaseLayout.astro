@@ -1,71 +1,28 @@
 ---
+import "../styles/global.css";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import SEOHead from "../components/SEOHead.astro";
+
 interface Props {
-  title?: string;
+  title: string;
   description?: string;
 }
-const { title = "Published Tech", description = "Análises de IA, software e infraestrutura." } = Astro.props;
-const nav = [
-  { href: "/", label: "Início" },
-  { href: "/secao/destaques-github", label: "Destaques GitHub" },
-  { href: "/secao/radar-hf", label: "Radar Hugging Face" },
-  { href: "/secao/artigos", label: "Artigos" },
-];
-const current = Astro.url.pathname;
+const { title, description } = Astro.props;
 ---
 <!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
-    <meta name="description" content={description} />
-    <link rel="canonical" href={Astro.url.href} />
+    <SEOHead title={title} description={description} />
   </head>
   <body>
-    <a class="skip" href="#conteudo">Pular para o conteúdo</a>
-    <header class="topbar">
-      <div class="wrap topbar-inner">
-        <a class="brand" href="/">Published Tech</a>
-        <nav aria-label="Seções">
-          <ul>
-            {nav.map((item) => (
-              <li>
-                <a href={item.href} aria-current={current === item.href ? "page" : undefined}>{item.label}</a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </div>
-    </header>
-    <main id="conteudo" class="wrap">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <Header />
+    <main id="conteudo" class="mx-auto max-w-6xl px-4 py-8">
       <slot />
     </main>
-    <footer class="wrap footer">
-      <p>Conteúdo assistido por IA, revisado por humano.</p>
-    </footer>
-    <style>
-      :root { --accent: #c00; --ink: #111; --muted: #666; --line: #e2e2e2; }
-      * { box-sizing: border-box; }
-      body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--ink); }
-      .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
-      .skip { position: absolute; left: -9999px; }
-      .skip:focus { left: 8px; top: 8px; background: #fff; padding: 8px; z-index: 10; }
-      .topbar { border-bottom: 3px solid var(--accent); }
-      .topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
-      .brand { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; color: var(--ink); text-decoration: none; }
-      nav ul { display: flex; gap: 18px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
-      nav a { color: var(--muted); text-decoration: none; font-weight: 600; }
-      nav a:hover, nav a[aria-current="page"] { color: var(--accent); }
-      h1, h2, h3 { line-height: 1.15; }
-      .footer { border-top: 1px solid var(--line); margin-top: 40px; padding: 20px 16px; color: var(--muted); font-size: 14px; }
-      .grid { display: grid; gap: 20px; grid-template-columns: repeat(3, 1fr); }
-      .card { border-top: 2px solid var(--accent); padding-top: 10px; }
-      .kicker { color: var(--accent); font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.06em; }
-      .card h3 { margin: 6px 0; }
-      .card a { color: var(--ink); text-decoration: none; }
-      .meta { color: var(--muted); font-size: 13px; }
-      .empty { color: var(--muted); padding: 24px 0; }
-      @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
-    </style>
+    <Footer />
   </body>
 </html>

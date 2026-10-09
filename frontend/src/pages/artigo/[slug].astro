@@ -1,25 +1,42 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import Kicker from "../../components/Kicker.astro";
+import ItemCard from "../../components/ItemCard.astro";
+import TransparencyBanner from "../../components/TransparencyBanner.astro";
 import { getArtigo, formatDate } from "../../lib/api";
 
 const { slug } = Astro.params;
 const artigo = await getArtigo(slug);
-
 if (!artigo) {
   return Astro.redirect("/404");
 }
+const ehLista = artigo.tipo === "lista";
 ---
 <BaseLayout title={artigo.titulo} description={artigo.resumo}>
-  <article class="artigo">
-    <span class="kicker">{artigo.secao}</span>
-    <h1>{artigo.titulo}</h1>
-    <p class="meta">{formatDate(artigo.publicado_em)} · conteúdo assistido por IA, revisado por humano</p>
-    <p class="resumo">{artigo.resumo}</p>
-    <div class="corpo">{artigo.corpo}</div>
+  <article class="mx-auto max-w-3xl">
+    <Kicker texto={artigo.secao} />
+    <h1 class="mt-1 text-3xl font-extrabold leading-tight text-principal sm:text-4xl">{artigo.titulo}</h1>
+    <p class="mt-2 text-sm text-texto-sec">{formatDate(artigo.publicado_em)}</p>
+    {artigo.resumo && <p class="mt-4 text-lg text-texto-sec">{artigo.resumo}</p>}
+    <div class="mt-6 whitespace-pre-line font-serif text-lg leading-8 text-principal">{artigo.corpo}</div>
+
+    {ehLista && artigo.aviso_curadoria && (
+      <p class="mt-6 rounded-md border border-complementar/40 bg-complementar/10 px-4 py-3 text-sm text-texto-sec">
+        {artigo.aviso_curadoria}
+      </p>
+    )}
+
+    {ehLista && artigo.itens?.length > 0 && (
+      <section class="mt-8">
+        <h2 class="mb-4 border-b border-borda pb-1 text-xl font-bold text-principal">Itens</h2>
+        <div class="grid gap-4 sm:grid-cols-2">
+          {artigo.itens.map((item) => (
+            <ItemCard slug={slug} ordem={item.ordem} dados={item.dados} />
+          ))}
+        </div>
+      </section>
+    )}
+
+    <TransparencyBanner />
   </article>
-  <style>
-    .artigo { max-width: 72ch; }
-    .resumo { font-size: 18px; color: #333; }
-    .corpo { white-space: pre-wrap; line-height: 1.7; }
-  </style>
 </BaseLayout>

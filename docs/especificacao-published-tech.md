@@ -718,7 +718,21 @@ Intervalo de data/hora, conteúdo, postagem/versão, seção, agente/etapa, prov
 
 - **Direção visual:** portal de notícias, conteúdo primeiro, alto contraste, hierarquia forte de títulos. Tema **claro** no MVP (escuro = evolução).
 - **Tipografia:** sans para manchetes/UI (stack do sistema/Inter); corpo de artigo com serif para leitura longa.
-- **Cor:** base neutra (branco/cinza/preto) + **uma** cor de destaque editorial (ex.: vermelho) para kickers, seção ativa e links. Provisória.
+- **Cor — paleta definida** (substitui a proposta de vermelho; sem vermelho):
+
+| Aplicação | Cor | HEX |
+|---|---|---|
+| Principal — cabeçalho, títulos e identidade | Azul profundo | `#0F172A` |
+| Destaque — botões, links e seleção | Azul | `#2563EB` |
+| Complementar — detalhes e categorias | Turquesa | `#14B8A6` |
+| Fundo claro | Branco suave | `#F8FAFC` |
+| Cards claros | Branco | `#FFFFFF` |
+| Texto secundário | Cinza azulado | `#475569` |
+| Bordas | Cinza claro | `#E2E8F0` |
+| Fundo escuro | Azul quase preto | `#0B1120` |
+| Cards escuros | Azul profundo | `#1E293B` |
+| Texto no modo escuro | Branco suave | `#F1F5F9` |
+
 - **Grade:** mobile-first, breakpoints do Tailwind (sm/md/lg/xl); corpo de leitura ~72ch.
 - **Transparência:** selo "conteúdo assistido por IA, revisado por humano".
 
