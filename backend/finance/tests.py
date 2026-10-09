@@ -7,9 +7,10 @@ from django.utils import timezone
 
 from ai import instrumentation
 from ai.models import ChamadaIA, StatusChamada
-from ai.providers import MockProvedor, OpenRouterProvedor
+from ai.providers import MockProvedor, OpenRouterProvedor, ProvedorTimeout
 from finance import services
 from finance.models import ConfiguracaoOrcamento, EstadoReserva, EventoOrcamento, ReservaOrcamento
+from finance.reports import exportar_csv, resumo
 from jobs.models import EventoTarefa, Tarefa
 from jobs.services import expirar_eventos
 
@@ -101,31 +102,73 @@ class OrcamentoTests(TestCase):
         instrumentation.executar_texto("x", finalidade="redacao", provedor=MockProvedor())
         self.assertEqual(ReservaOrcamento.objects.count(), 0)
 
+    def test_incerto_conserva_custo_da_reserva(self):
+        def http_post(url, headers, body):
+            raise ProvedorTimeout("timeout")
+
+        provedor = OpenRouterProvedor(
+            api_key="k", base_url="https://openrouter.ai/api/v1", modelo_padrao="m", http_post=http_post
+        )
+        resultado = instrumentation.executar_texto(
+            "x", finalidade="redacao", provedor=provedor, custo_estimado=Decimal("0.03")
+        )
+        self.assertEqual(resultado.chamada.status, StatusChamada.TIMEOUT)
+        self.assertEqual(resultado.chamada.custo, Decimal("0.03"))
+        self.assertEqual(services.gasto_dia(), Decimal("0.03"))
+
+    def test_reserva_expirada_nao_conta(self):
+        reserva = services.reservar(Decimal("1.0"))
+        ReservaOrcamento.objects.filter(pk=reserva.pk).update(
+            expira_em=timezone.now() - timedelta(seconds=1)
+        )
+        self.assertEqual(services.gasto_dia(), Decimal("0"))
+        reserva.refresh_from_db()
+        self.assertEqual(reserva.estado, EstadoReserva.EXPIRADA)
+
 
 class RelatoriosTests(TestCase):
-    def criar(self, provedor, custo):
-        return criar_chamada(provedor=provedor, modelo="m", custo=custo)
+    def criar(self, provedor, custo, **extra):
+        return criar_chamada(provedor=provedor, modelo="m", custo=custo) if not extra else ChamadaIA.objects.create(
+            provedor=provedor,
+            modelo="m",
+            finalidade="redacao",
+            iniciada_em=timezone.now(),
+            status=StatusChamada.SUCESSO,
+            custo=custo,
+            **extra,
+        )
 
     def test_resumo_e_csv(self):
         self.criar("openrouter", Decimal("1.0"))
         self.criar("openrouter", Decimal("2.0"))
         self.criar("mock", None)
 
-        resumo = services.resumo()
-        self.assertEqual(resumo["total"], Decimal("3.0"))
-        self.assertEqual(resumo["por_provedor"]["openrouter"], Decimal("3.0"))
-        self.assertEqual(resumo["quantidade"], 3)
+        dados = resumo()
+        self.assertEqual(dados["total"], Decimal("3.0"))
+        self.assertEqual(dados["por_provedor"]["openrouter"], Decimal("3.0"))
+        self.assertEqual(dados["quantidade"], 3)
 
-        csv_texto = services.exportar_csv()
-        linhas = csv_texto.strip().splitlines()
+        linhas = exportar_csv().strip().splitlines()
         self.assertEqual(linhas[0].split(",")[0], "id")
+        self.assertIn("duracao_ms", linhas[0])
         self.assertEqual(len(linhas), 4)
+
+    def test_agregacoes_por_tarefa_e_conteudo_e_etapa(self):
+        tarefa = Tarefa.objects.create(tipo_tarefa="eco")
+        self.criar("openrouter", Decimal("1.0"), tarefa=tarefa, conteudo_id=7, etapa="redigir")
+        self.criar("openrouter", Decimal("2.0"), tarefa=tarefa, conteudo_id=7, etapa="revisar")
+
+        dados = resumo({"etapa": "redigir"})
+        self.assertEqual(dados["total"], Decimal("1.0"))
+        dados = resumo()
+        self.assertEqual(dados["por_tarefa"][str(tarefa.pk)], Decimal("3.0"))
+        self.assertEqual(dados["por_conteudo"]["7"], Decimal("3.0"))
 
     def test_filtro_por_provedor(self):
         self.criar("openrouter", Decimal("1.0"))
         self.criar("mock", Decimal("5.0"))
-        resumo = services.resumo({"provedor": "mock"})
-        self.assertEqual(resumo["total"], Decimal("5.0"))
+        dados = resumo({"provedor": "mock"})
+        self.assertEqual(dados["total"], Decimal("5.0"))
 
     def test_financeiro_sobrevive_a_purga_de_logs(self):
         self.criar("openrouter", Decimal("4.0"))
@@ -138,4 +181,4 @@ class RelatoriosTests(TestCase):
         removidos = expirar_eventos(timezone.now())
         self.assertEqual(removidos, 1)
         self.assertEqual(EventoTarefa.objects.count(), 0)
-        self.assertEqual(services.resumo()["total"], Decimal("4.0"))
+        self.assertEqual(resumo()["total"], Decimal("4.0"))

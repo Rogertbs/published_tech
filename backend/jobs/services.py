@@ -289,5 +289,7 @@ def definir_automatico(valor: bool) -> None:
 
 
 def expirar_eventos(antes_de) -> int:
-    removidos, _ = EventoTarefa.objects.filter(criado_em__lt=antes_de).delete()
-    return removidos
+    eventos = EventoTarefa.objects.filter(criado_em__lt=antes_de)
+    total = eventos.count()
+    eventos.delete()
+    return total

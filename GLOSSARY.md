@@ -76,6 +76,18 @@ _Avoid_: Cron, schedule
 Reserva conservadora de gasto feita antes de uma chamada paga, conciliada após a resposta.
 _Avoid_: Saldo, crédito
 
+**Orçamento**:
+Limite configurável de gasto (diário/mensal) que bloqueia novas chamadas pagas.
+_Avoid_: Cota, verba
+
+**Conciliar**:
+Encerrar uma ReservaOrcamento ligando-a à chamada que a consumiu (ou, se o custo for incerto, mantendo o valor estimado conservador).
+_Avoid_: Fechar, liquidar
+
+**EventoOrcamento**:
+Registro imutável de um bloqueio de gasto por orçamento excedido.
+_Avoid_: Log de orçamento
+
 **AuditoriaAdministrativa**:
 Registro imutável de ação administrativa (autor, ação, entidade, antes/depois, timestamp).
 _Avoid_: Log de auditoria

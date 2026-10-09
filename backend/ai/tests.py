@@ -71,8 +71,8 @@ class InstrumentacaoTests(TestCase):
             "x", finalidade="redacao", provedor=provedor_openrouter(http_post=http_post)
         ).chamada
         self.assertEqual(chamada.status, StatusChamada.TIMEOUT)
-        self.assertIsNone(chamada.custo)
-        self.assertEqual(chamada.origem_custo, OrigemCusto.DESCONHECIDO)
+        self.assertEqual(chamada.origem_custo, OrigemCusto.ESTIMADO)
+        self.assertEqual(chamada.custo, Decimal("0.02"))
 
     def test_incerto(self):
         def http_post(url, headers, body):

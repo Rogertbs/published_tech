@@ -1,14 +1,13 @@
-import csv
-import io
 from datetime import timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.db import connection, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from ai.models import ChamadaIA
+from ai.models import ChamadaIA, OrigemCusto, StatusChamada
 from finance.models import ConfiguracaoOrcamento, EstadoReserva, EventoOrcamento, ReservaOrcamento
 
 ZERO = Decimal("0")
@@ -23,18 +22,22 @@ class OrcamentoExcedido(Exception):
         self.gasto_mes = gasto_mes
 
 
-def _tz() -> ZoneInfo:
+def tz_local() -> ZoneInfo:
     return ZoneInfo(getattr(settings, "ORCAMENTO_TIMEZONE", "America/Sao_Paulo"))
 
 
 def inicio_dia(agora):
-    local = agora.astimezone(_tz())
+    local = agora.astimezone(tz_local())
     return local.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def inicio_mes(agora):
-    local = agora.astimezone(_tz()).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    local = agora.astimezone(tz_local()).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     return local
+
+
+def estimativa_padrao() -> Decimal:
+    return Decimal(getattr(settings, "AI_CUSTO_ESTIMADO_PADRAO", "0.02"))
 
 
 def gasto_periodo(inicio, fim) -> Decimal:
@@ -55,36 +58,62 @@ def gasto_periodo(inicio, fim) -> Decimal:
     return conciliadas + reservas
 
 
+def expirar_reservas(agora=None) -> int:
+    agora = agora or timezone.now()
+    return ReservaOrcamento.objects.filter(
+        estado=EstadoReserva.ATIVA, expira_em__lt=agora
+    ).update(estado=EstadoReserva.EXPIRADA)
+
+
 def gasto_dia(agora=None) -> Decimal:
     agora = agora or timezone.now()
+    expirar_reservas(agora)
     return gasto_periodo(inicio_dia(agora), agora)
 
 
 def gasto_mes(agora=None) -> Decimal:
     agora = agora or timezone.now()
+    expirar_reservas(agora)
     return gasto_periodo(inicio_mes(agora), agora)
 
 
-def estimativa_padrao() -> Decimal:
-    return Decimal(getattr(settings, "AI_CUSTO_ESTIMADO_PADRAO", "0.02"))
-
-
-def verificar_disponivel(valor_estimado: Decimal, agora=None):
-    agora = agora or timezone.now()
-    config = ConfiguracaoOrcamento.get_solo()
+def _verificar(config, valor_estimado, agora):
     dia = gasto_dia(agora)
     mes = gasto_mes(agora)
     if dia + valor_estimado > config.limite_diario:
         raise OrcamentoExcedido("diario", valor_estimado, dia, mes)
     if mes + valor_estimado > config.limite_mensal:
         raise OrcamentoExcedido("mensal", valor_estimado, dia, mes)
-    return dia, mes
+
+
+def verificar_disponivel(valor_estimado: Decimal, agora=None):
+    agora = agora or timezone.now()
+    return _verificar(ConfiguracaoOrcamento.get_solo(), valor_estimado, agora)
+
+
+def _config_lockada() -> ConfiguracaoOrcamento:
+    ConfiguracaoOrcamento.get_solo()
+    qs = ConfiguracaoOrcamento.objects.all()
+    if connection.vendor == "postgresql":
+        qs = qs.select_for_update()
+    return qs.get(pk=1)
 
 
 def reservar(valor_estimado: Decimal, provedor: str = "", modelo: str = "") -> ReservaOrcamento:
-    config = ConfiguracaoOrcamento.get_solo()
+    agora = timezone.now()
+    expirar_reservas(agora)
     try:
-        verificar_disponivel(valor_estimado)
+        with transaction.atomic():
+            config = _config_lockada()
+            _verificar(config, valor_estimado, agora)
+            ttl = int(getattr(settings, "RESERVA_ORCAMENTO_TTL_SECONDS", 300))
+            return ReservaOrcamento.objects.create(
+                provedor=provedor,
+                modelo=modelo,
+                valor_estimado=valor_estimado,
+                moeda=config.moeda,
+                expira_em=agora + timedelta(seconds=ttl),
+            )
     except OrcamentoExcedido as exc:
         EventoOrcamento.objects.create(
             tipo=EventoOrcamento.Tipo.BLOQUEIO,
@@ -95,121 +124,17 @@ def reservar(valor_estimado: Decimal, provedor: str = "", modelo: str = "") -> R
             detalhe=str(exc),
         )
         raise
-    ttl = int(getattr(settings, "RESERVA_ORCAMENTO_TTL_SECONDS", 300))
-    return ReservaOrcamento.objects.create(
-        provedor=provedor,
-        modelo=modelo,
-        valor_estimado=valor_estimado,
-        moeda=config.moeda,
-        expira_em=timezone.now() + timedelta(seconds=ttl),
-    )
 
 
 def conciliar(reserva: ReservaOrcamento, chamada: ChamadaIA) -> ReservaOrcamento:
+    if chamada.custo is None and chamada.status in (StatusChamada.INCERTO, StatusChamada.TIMEOUT):
+        chamada.custo = reserva.valor_estimado
+        chamada.origem_custo = OrigemCusto.ESTIMADO
+        chamada.moeda = reserva.moeda
+        chamada.save(update_fields=["custo", "origem_custo", "moeda"])
+
     reserva.chamada = chamada
     reserva.estado = EstadoReserva.CONCILIADA
     reserva.conciliada_em = timezone.now()
     reserva.save(update_fields=["chamada", "estado", "conciliada_em"])
     return reserva
-
-
-def expirar_reservas(agora=None) -> int:
-    agora = agora or timezone.now()
-    return ReservaOrcamento.objects.filter(
-        estado=EstadoReserva.ATIVA, expira_em__lt=agora
-    ).update(estado=EstadoReserva.EXPIRADA)
-
-
-def _filtrar(filtros: dict):
-    qs = ChamadaIA.objects.all()
-    if filtros.get("inicio"):
-        qs = qs.filter(iniciada_em__gte=filtros["inicio"])
-    if filtros.get("fim"):
-        qs = qs.filter(iniciada_em__lt=filtros["fim"])
-    for campo in ("provedor", "modelo", "finalidade", "status", "conteudo_id", "tarefa_id"):
-        if filtros.get(campo) is not None:
-            qs = qs.filter(**{campo: filtros[campo]})
-    if filtros.get("tentativa") is not None:
-        qs = qs.filter(tentativa=filtros["tentativa"])
-    return qs
-
-
-def resumo(filtros: dict | None = None) -> dict:
-    filtros = filtros or {}
-    qs = _filtrar(filtros)
-    total = qs.aggregate(total=Sum("custo")).get("total") or ZERO
-    por_provedor = {
-        linha["provedor"]: linha["total"] or ZERO
-        for linha in qs.values("provedor").annotate(total=Sum("custo"))
-    }
-    por_modelo = {
-        linha["modelo"]: linha["total"] or ZERO
-        for linha in qs.values("modelo").annotate(total=Sum("custo"))
-    }
-    por_finalidade = {
-        linha["finalidade"]: linha["total"] or ZERO
-        for linha in qs.values("finalidade").annotate(total=Sum("custo"))
-    }
-    por_dia = {}
-    for chamada in qs.filter(custo__isnull=False):
-        dia = chamada.iniciada_em.astimezone(_tz()).date().isoformat()
-        por_dia[dia] = por_dia.get(dia, ZERO) + chamada.custo
-    return {
-        "total": total,
-        "por_provedor": por_provedor,
-        "por_modelo": por_modelo,
-        "por_finalidade": por_finalidade,
-        "por_dia": por_dia,
-        "quantidade": qs.count(),
-    }
-
-
-CSV_CABECALHO = [
-    "id",
-    "iniciada_em",
-    "provedor",
-    "modelo",
-    "finalidade",
-    "etapa",
-    "status",
-    "tentativa",
-    "request_id_externo",
-    "tokens_entrada",
-    "tokens_saida",
-    "tokens_cache",
-    "moeda",
-    "custo",
-    "origem_custo",
-    "tarefa_id",
-    "conteudo_id",
-]
-
-
-def exportar_csv(filtros: dict | None = None) -> str:
-    filtros = filtros or {}
-    buff = io.StringIO()
-    escritor = csv.writer(buff)
-    escritor.writerow(CSV_CABECALHO)
-    for chamada in _filtrar(filtros).order_by("iniciada_em"):
-        escritor.writerow(
-            [
-                chamada.pk,
-                chamada.iniciada_em.astimezone(_tz()).isoformat(),
-                chamada.provedor,
-                chamada.modelo,
-                chamada.finalidade,
-                chamada.etapa,
-                chamada.status,
-                chamada.tentativa,
-                chamada.request_id_externo,
-                chamada.tokens_entrada,
-                chamada.tokens_saida,
-                chamada.tokens_cache,
-                chamada.moeda,
-                "" if chamada.custo is None else str(chamada.custo),
-                chamada.origem_custo,
-                chamada.tarefa_id,
-                chamada.conteudo_id,
-            ]
-        )
-    return buff.getvalue()
