@@ -1,41 +1,14 @@
 import json
-import os
 import time
-import urllib.error
-import urllib.request
 from datetime import timedelta
 
 from django.utils import timezone
 
-from sources.connectors.base import (
-    Conector,
-    ConectorError,
-    ConectorIndisponivel,
-    RateLimitPersistente,
-)
+from sources.connectors.base import Conector, ConectorError, requisitar_com_retry, urllib_get
 
 API_URL = "https://api.github.com/search/repositories"
-API_VERSION = os.environ.get("GITHUB_API_VERSION", "2026-03-10")
+API_VERSION = "2026-03-10"
 LIMITE_QUERY = 256
-
-
-def _header(headers: dict, nome: str):
-    alvo = nome.lower()
-    for chave, valor in headers.items():
-        if chave.lower() == alvo:
-            return valor
-    return None
-
-
-def urllib_get(url: str, headers: dict, timeout: int = 10):
-    request = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, dict(response.headers), response.read().decode()
-    except urllib.error.HTTPError as exc:
-        return exc.code, dict(exc.headers or {}), exc.read().decode()
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ConectorIndisponivel(str(exc)) from exc
 
 
 class GitHubConector(Conector):
@@ -66,37 +39,12 @@ class GitHubConector(Conector):
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        status, headers_resposta, corpo = self._requisitar(url, headers, http_get, sleep)
+        _, _, corpo = requisitar_com_retry(
+            url, headers, http_get, sleep, nome="GitHub"
+        )
         payload = json.loads(corpo or "{}")
         agora = timezone.now()
         return [self._normalizar(item, agora) for item in payload.get("items", [])]
-
-    def _requisitar(self, url, headers, http_get, sleep, max_tentativas=3):
-        for tentativa in range(1, max_tentativas + 1):
-            status, headers_resposta, corpo = http_get(url, headers)
-            restantes = _header(headers_resposta, "X-RateLimit-Remaining")
-            limite_atingido = status == 429 or (status == 403 and restantes == "0")
-            if limite_atingido:
-                if tentativa >= max_tentativas:
-                    raise RateLimitPersistente("Limite de taxa do GitHub atingido.")
-                sleep(self._atraso(headers_resposta, tentativa))
-                continue
-            if status >= 500:
-                if tentativa >= max_tentativas:
-                    raise ConectorIndisponivel(f"GitHub respondeu HTTP {status}.")
-                sleep(2 ** tentativa)
-                continue
-            if status >= 400:
-                raise ConectorError(f"GitHub respondeu HTTP {status}.")
-            return status, headers_resposta, corpo
-        raise ConectorIndisponivel("Não foi possível concluir a requisição ao GitHub.")
-
-    @staticmethod
-    def _atraso(headers: dict, tentativa: int) -> int:
-        retry_after = _header(headers, "Retry-After")
-        if retry_after and str(retry_after).isdigit():
-            return int(retry_after)
-        return 2 ** tentativa
 
     @staticmethod
     def _normalizar(item: dict, agora) -> dict:

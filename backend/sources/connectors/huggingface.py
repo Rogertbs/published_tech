@@ -1,19 +1,11 @@
 import json
 import re
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime
 
 from django.utils import timezone
 
-from sources.connectors.base import (
-    Conector,
-    ConectorError,
-    ConectorIndisponivel,
-    RateLimitPersistente,
-)
-from sources.connectors.github import _header
+from sources.connectors.base import Conector, requisitar_com_retry, urllib_get
 from sources.models import CategoriaModelo
 
 API_URL = "https://huggingface.co/api/models"
@@ -26,17 +18,6 @@ _VARIANTE_RE = re.compile(
 )
 
 
-def urllib_get(url: str, headers: dict, timeout: int = 10):
-    request = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, dict(response.headers), response.read().decode()
-    except urllib.error.HTTPError as exc:
-        return exc.code, dict(exc.headers or {}), exc.read().decode()
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ConectorIndisponivel(str(exc)) from exc
-
-
 def _tag(tags: list, prefixo: str):
     for tag in tags or []:
         if tag.startswith(prefixo):
@@ -45,13 +26,12 @@ def _tag(tags: list, prefixo: str):
 
 
 def _formatos(tags: list) -> list:
-    encontrados = [f for f in FORMATOS if f in (tag.lower() for tag in tags or [])]
-    return encontrados
+    inferiores = {tag.lower() for tag in tags or []}
+    return [formato for formato in FORMATOS if formato in inferiores]
 
 
 def _parametros(item: dict):
-    safetensors = item.get("safetensors") or {}
-    total = safetensors.get("total")
+    total = (item.get("safetensors") or {}).get("total")
     if isinstance(total, int) and total > 0:
         return total
     return DESCONHECIDO
@@ -111,7 +91,7 @@ class HuggingFaceConector(Conector):
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        status, headers_resposta, corpo = self._requisitar(url, headers, http_get, sleep)
+        _, _, corpo = requisitar_com_retry(url, headers, http_get, sleep, nome="Hugging Face")
         payload = json.loads(corpo or "[]")
         if isinstance(payload, dict):
             payload = payload.get("models", [])
@@ -119,31 +99,13 @@ class HuggingFaceConector(Conector):
         normalizados = [self._normalizar(item, agora) for item in payload]
         return self._agrupar_familias(normalizados)
 
-    def _requisitar(self, url, headers, http_get, sleep, max_tentativas=3):
-        for tentativa in range(1, max_tentativas + 1):
-            status, headers_resposta, corpo = http_get(url, headers)
-            if status == 429 or (
-                status == 403 and _header(headers_resposta, "X-RateLimit-Remaining") == "0"
-            ):
-                if tentativa >= max_tentativas:
-                    raise RateLimitPersistente("Limite de taxa do Hugging Face atingido.")
-                sleep(2 ** tentativa)
-                continue
-            if status >= 500:
-                if tentativa >= max_tentativas:
-                    raise ConectorIndisponivel(f"Hugging Face respondeu HTTP {status}.")
-                sleep(2 ** tentativa)
-                continue
-            if status >= 400:
-                raise ConectorError(f"Hugging Face respondeu HTTP {status}.")
-            return status, headers_resposta, corpo
-        raise ConectorIndisponivel("Não foi possível concluir a requisição ao Hugging Face.")
-
     @staticmethod
     def _normalizar(item: dict, agora) -> dict:
         tags = item.get("tags") or []
         identificador = item.get("id") or item.get("modelId") or ""
-        autor = item.get("author") or (identificador.split("/")[0] if "/" in identificador else DESCONHECIDO)
+        autor = item.get("author") or (
+            identificador.split("/")[0] if "/" in identificador else DESCONHECIDO
+        )
         base_model = _tag(tags, "base_model:")
         if base_model and base_model.endswith(":adapter"):
             base_model = base_model[: -len(":adapter")]
@@ -168,18 +130,23 @@ class HuggingFaceConector(Conector):
                 "coletado_em": agora.isoformat(),
             },
             "lancamento_confirmado": lancamento_confirmado,
-            "data_lancamento": DESCONHECIDO if not lancamento_confirmado else item.get("createdAt"),
+            "data_lancamento": (item.get("data_lancamento") or DESCONHECIDO)
+            if lancamento_confirmado
+            else DESCONHECIDO,
             "anuncio": DESCONHECIDO,
+            "evidencias": [f"https://huggingface.co/{identificador}"],
             "origem": "metadado_coletado",
+            "verificado": False,
         }
+        dados["familia"] = _familia(dados)
         dados["categoria"] = classificar(dados)
-        return {"chave_externa": identificador, "dados": dados}
+        return {"chave_externa": dados["familia"], "dados": dados}
 
     @staticmethod
     def _agrupar_familias(normalizados: list[dict]) -> list[dict]:
         familias: dict[str, dict] = {}
         for registro in normalizados:
-            chave = _familia(registro["dados"])
+            chave = registro["dados"]["familia"]
             atual = familias.get(chave)
             if atual is None:
                 registro["dados"]["variantes"] = [registro["dados"]["id"]]

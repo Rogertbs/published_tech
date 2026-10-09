@@ -267,6 +267,21 @@ class HuggingFaceTests(TestCase):
         self.assertEqual(coleta.estado, EstadoColeta.OK)
         self.assertEqual(RegistroNormalizado.objects.filter(fonte=fonte).count(), 2)
         self.assertEqual(Candidato.objects.count(), 2)
+        self.assertTrue(all(c.pontuacao > 0 for c in Candidato.objects.all()))
+        self.assertIn("trendingScore", Candidato.objects.first().motivo)
+
+    def test_familia_fica_um_registro_entre_coletas(self):
+        fonte = self.fonte()
+        models = [
+            hf_item("org/model", trending=100),
+            hf_item("org/model-GGUF", trending=500, tags=["base_model:org/model"]),
+        ]
+        services.coletar(fonte, http_get=get_lista(models), sleep=lambda s: None)
+        services.coletar(fonte, http_get=get_lista(models), sleep=lambda s: None)
+        self.assertEqual(RegistroNormalizado.objects.filter(fonte=fonte).count(), 1)
+        registro = RegistroNormalizado.objects.get()
+        self.assertEqual(registro.chave_externa, "org/model")
+        self.assertEqual(sorted(registro.dados["variantes"]), ["org/model", "org/model-GGUF"])
 
     def test_acesso_restrito(self):
         models = [hf_item("org/gated", trending=5, gated="auto", tags=["license:apache-2.0"])]

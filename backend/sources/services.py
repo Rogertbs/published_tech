@@ -4,8 +4,8 @@ from datetime import datetime
 
 from django.utils import timezone
 
-from sources.connectors.base import ConectorError, RateLimitPersistente
-from sources.connectors.github import GitHubConector, urllib_get
+from sources.connectors.base import ConectorError, RateLimitPersistente, urllib_get
+from sources.connectors.github import GitHubConector
 from sources.connectors.huggingface import HuggingFaceConector
 from sources.models import (
     Candidato,
@@ -107,6 +107,12 @@ def _dias_desde(valor) -> int | None:
 
 
 def _pontuacao(dados: dict, fonte: Fonte) -> float:
+    if fonte.tipo == TipoFonte.HUGGINGFACE:
+        trending = float(dados.get("trendingScore") or 0)
+        metadados = dados.get("metadados") or {}
+        downloads = float(metadados.get("downloads") or 0)
+        likes = float(metadados.get("likes") or 0)
+        return trending * 10 + downloads / 1000 + likes
     estrelas = float(dados.get("estrelas") or 0)
     forks = float(dados.get("forks") or 0)
     janela = int(fonte.parametros.get("janela_dias", 7))
@@ -116,6 +122,14 @@ def _pontuacao(dados: dict, fonte: Fonte) -> float:
 
 
 def _motivo(dados: dict, fonte: Fonte) -> str:
+    if fonte.tipo == TipoFonte.HUGGINGFACE:
+        metadados = dados.get("metadados") or {}
+        return (
+            f"curadoria própria de modelos (fonte: Hub): "
+            f"trendingScore={dados.get('trendingScore')}, downloads={metadados.get('downloads')}, "
+            f"likes={metadados.get('likes')}, categoria={dados.get('categoria')}, "
+            f"familia={dados.get('familia')}"
+        )
     janela = int(fonte.parametros.get("janela_dias", 7))
     return (
         f"curadoria própria (não é o ranking oficial do GitHub): "
