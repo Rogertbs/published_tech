@@ -15,6 +15,7 @@ from ai.providers import (
 
 MILHAO = Decimal(1_000_000)
 PRECISAO = Decimal("0.000001")
+PADRAO = {"tokens_entrada": None, "tokens_saida": None, "tokens_cache": None, "request_id": ""}
 
 
 @dataclass
@@ -25,7 +26,7 @@ class RespostaIA:
 
 def _calcular_custo(provedor_nome, modelo, resposta):
     if resposta is not None and resposta.custo_informado is not None:
-        return resposta.custo_informado, OrigemCusto.INFORMADO, None
+        return resposta.custo_informado, OrigemCusto.INFORMADO, None, resposta.moeda
 
     preco = (
         PrecoModelo.objects.filter(provedor=provedor_nome, modelo=modelo)
@@ -41,8 +42,19 @@ def _calcular_custo(provedor_nome, modelo, resposta):
             Decimal(resposta.tokens_entrada) * preco.preco_entrada_por_milhao
             + Decimal(resposta.tokens_saida) * preco.preco_saida_por_milhao
         ) / MILHAO
-        return custo.quantize(PRECISAO), OrigemCusto.ESTIMADO, preco.preco_saida_por_milhao
-    return None, OrigemCusto.DESCONHECIDO, None
+        return custo.quantize(PRECISAO), OrigemCusto.ESTIMADO, preco.preco_saida_por_milhao, preco.moeda
+    return None, OrigemCusto.DESCONHECIDO, None, "USD"
+
+
+def _valores(resposta):
+    if resposta is None:
+        return PADRAO
+    return {
+        "tokens_entrada": resposta.tokens_entrada,
+        "tokens_saida": resposta.tokens_saida,
+        "tokens_cache": resposta.tokens_cache,
+        "request_id": resposta.request_id,
+    }
 
 
 def executar_texto(
@@ -59,7 +71,7 @@ def executar_texto(
     tentativa: int = 1,
 ) -> RespostaIA:
     provedor = provedor or obter_provedor()
-    modelo = modelo or provedor.modelo_padrao
+    modelo_solicitado = modelo or provedor.modelo_padrao
     inicio = timezone.now()
     t0 = time.monotonic()
 
@@ -67,7 +79,7 @@ def executar_texto(
     erro = ""
     resposta = None
     try:
-        resposta = provedor.gerar_texto(prompt, parametros or {}, modelo)
+        resposta = provedor.gerar_texto(prompt, parametros or {}, modelo_solicitado)
     except ProvedorTimeout as exc:
         status, erro = StatusChamada.TIMEOUT, str(exc)
     except ProvedorIncerto as exc:
@@ -81,11 +93,15 @@ def executar_texto(
 
     fim = timezone.now()
     duracao_ms = int((time.monotonic() - t0) * 1000)
-    custo, origem_custo, preco_aplicado = _calcular_custo(provedor.nome, modelo, resposta)
+    modelo_efetivo = resposta.modelo if resposta else modelo_solicitado
+    custo, origem_custo, preco_aplicado, moeda = _calcular_custo(
+        provedor.nome, modelo_efetivo, resposta
+    )
+    valores = _valores(resposta)
 
     chamada = ChamadaIA.objects.create(
         provedor=provedor.nome,
-        modelo=modelo,
+        modelo=modelo_efetivo,
         finalidade=finalidade,
         etapa=etapa,
         tarefa=tarefa,
@@ -96,11 +112,11 @@ def executar_texto(
         duracao_ms=duracao_ms,
         status=status,
         tentativa=tentativa,
-        request_id_externo=(resposta.request_id if resposta else ""),
-        tokens_entrada=(resposta.tokens_entrada if resposta else None),
-        tokens_saida=(resposta.tokens_saida if resposta else None),
-        tokens_cache=(resposta.tokens_cache if resposta else None),
-        moeda=(resposta.moeda if resposta else "USD"),
+        request_id_externo=valores["request_id"],
+        tokens_entrada=valores["tokens_entrada"],
+        tokens_saida=valores["tokens_saida"],
+        tokens_cache=valores["tokens_cache"],
+        moeda=moeda,
         preco_aplicado=preco_aplicado,
         custo=custo,
         origem_custo=origem_custo,

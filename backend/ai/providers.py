@@ -76,7 +76,7 @@ class OpenRouterProvedor(ProvedorIA):
         url = f"{self.base_url}/chat/completions"
         status, _, body = self._http_post(url, headers, json.dumps(corpo))
 
-        if status in (408, 504):
+        if status == 408:
             raise ProvedorTimeout(f"OpenRouter respondeu HTTP {status}.")
         if status >= 500:
             raise ProvedorIncerto(f"OpenRouter respondeu HTTP {status} (resultado incerto).")
@@ -87,7 +87,9 @@ class OpenRouterProvedor(ProvedorIA):
             payload = json.loads(body)
             texto = payload["choices"][0]["message"]["content"]
         except (ValueError, KeyError, IndexError) as exc:
-            raise ProvedorErro(f"Resposta inesperada do OpenRouter: {exc}") from exc
+            raise ProvedorIncerto(
+                f"Resposta 200 inesperada do OpenRouter (pode ter sido cobrada): {exc}"
+            ) from exc
 
         usage = payload.get("usage") or {}
         custo = usage.get("cost", usage.get("total_cost"))

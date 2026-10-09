@@ -89,6 +89,15 @@ class InstrumentacaoTests(TestCase):
         ).chamada
         self.assertEqual(chamada.status, StatusChamada.ERRO)
 
+    def test_200_json_invalido_incerto(self):
+        def http_post(url, headers, body):
+            return 200, {}, "não é json"
+
+        chamada = instrumentation.executar_texto(
+            "x", finalidade="redacao", provedor=provedor_openrouter(http_post=http_post)
+        ).chamada
+        self.assertEqual(chamada.status, StatusChamada.INCERTO)
+
     def test_http_5xx_incerto(self):
         chamada = instrumentation.executar_texto(
             "x", finalidade="redacao", provedor=provedor_openrouter(payload={}, status=503)
@@ -111,6 +120,22 @@ class InstrumentacaoTests(TestCase):
         self.assertEqual(chamada.origem_custo, OrigemCusto.ESTIMADO)
         self.assertEqual(chamada.custo, Decimal("2.000000"))
         self.assertEqual(chamada.preco_aplicado, Decimal("2.0"))
+
+    def test_moeda_estimada_vem_do_preco(self):
+        PrecoModelo.objects.create(
+            provedor="openrouter",
+            modelo="meta-llama/llama-3.3-70b-instruct:free",
+            moeda="BRL",
+            preco_entrada_por_milhao=Decimal("1.0"),
+            preco_saida_por_milhao=Decimal("1.0"),
+            vigente_de=timezone.now(),
+        )
+        payload = payload_openrouter(cost=None, prompt_tokens=1000, completion_tokens=1000)
+        chamada = instrumentation.executar_texto(
+            "x", finalidade="redacao", provedor=provedor_openrouter(payload=payload)
+        ).chamada
+        self.assertEqual(chamada.origem_custo, OrigemCusto.ESTIMADO)
+        self.assertEqual(chamada.moeda, "BRL")
 
     def test_tokens_desconhecidos_nao_sao_zero(self):
         payload = payload_openrouter(cost=None, prompt_tokens=None, completion_tokens=None)
