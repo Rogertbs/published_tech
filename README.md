@@ -8,8 +8,8 @@ Este repositório contém o **ticket 01 — esqueleto de ponta a ponta** e o **t
 
 ## Estrutura
 
-- `backend/` — Django (API pública + admin + fila/worker/agendador). No dev, o mesmo
-  container também roda Redis (cache).
+- `backend/` — Django (API pública + admin + fila/worker/agendador + fontes). No dev, o
+  mesmo container também roda Redis (cache).
 - `frontend/` — Astro (SSR) consumindo a API Django, com middleware de cache.
 - `docker-compose.yml` — **3 containers**: `db` (PostgreSQL), `backend`, `frontend`.
 
@@ -84,6 +84,25 @@ curl localhost:8010/api/execucoes/1
   "Executar agora" continua funcionando (independente do flag) e é recusado se pausado.
 - Se `INTERNAL_API_TOKEN` estiver definido, `POST/GET /api/execucoes` exige o header
   `X-Internal-Token`.
+
+## Fontes e coleta (GitHub)
+
+Fontes são instâncias configuráveis no admin (`Fonte`): tipo, nome, credencial por
+**referência** (nome de uma variável de ambiente, ex.: `GITHUB_TOKEN`), parâmetros e
+ativo/inativo. Desabilitar interrompe novas coletas sem apagar o histórico.
+
+- A tarefa de fila `coletar` (via `run_worker` ou "Executar agora") roda
+  `coletar_todas`: só fontes habilitadas; uma falha de fonte não derruba as demais
+  (marca `falhou_parcial`).
+- O conector GitHub usa a Search API com qualificadores datados (`stars:>=`, `pushed:>=`,
+  `language:`, `topic:`), respeita o limite de taxa com backoff e normaliza os
+  registros (id, nome, URL, linguagem, licença, métricas, datas).
+- Registros são deduplicados por `(fonte, chave_externa)`.
+- `selecionar_candidatos` ordena por pontuação (estrelas) e limita a seleção
+  (`parametros.selecao`, padrão 5), registrando o `Candidato` e o motivo.
+
+Parâmetros úteis de `Fonte.parametros`: `janela_dias`, `min_estrelas`, `limite`,
+`language`, `topic`, `selecao`.
 
 ## Cache (render-once-and-cache)
 
