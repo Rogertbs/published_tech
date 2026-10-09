@@ -1,33 +1,15 @@
-import json
-
 from django.core.cache import cache
 from django.test import TestCase
 
 from ai.models import ChamadaIA
+from auditoria.models import AuditoriaAdministrativa
 from content import services as content
 from content.models import Conteudo, EstadoConteudo, Versao
 from finance.reports import resumo
 from pipeline.motor import executar_pipeline
 from sources import services as sources
 from sources.models import Fonte, TipoFonte
-
-
-def gh_get(items):
-    def _get(url, headers):
-        return 200, {}, json.dumps({"items": items})
-
-    return _get
-
-
-def repo(id_, name, stars):
-    return {
-        "id": id_,
-        "full_name": name,
-        "html_url": f"https://github.com/{name}",
-        "description": "d",
-        "licenca": "MIT",
-        "stargazers_count": stars,
-    }
+from tests.factories import gh_get, repo
 
 
 class FluxoE2ETests(TestCase):
@@ -60,7 +42,9 @@ class FluxoE2ETests(TestCase):
         self.assertEqual(artigo.status_code, 200)
         self.assertEqual(len(artigo.json()["itens"]), 2)
         self.assertIn("Curadoria própria", artigo.json()["aviso_curadoria"])
-        self.assertEqual(self.client.get("/api/publico/home").json()["destaques_github"][0]["slug"], conteudo.slug)
+        self.assertEqual(
+            self.client.get("/api/publico/home").json()["destaques_github"][0]["slug"], conteudo.slug
+        )
 
         v2 = content.editar(conteudo, titulo="v2")
         self.assertEqual(
@@ -73,6 +57,7 @@ class FluxoE2ETests(TestCase):
 
         self.assertGreaterEqual(ChamadaIA.objects.count(), 1)
         self.assertGreaterEqual(resumo()["quantidade"], 1)
+        self.assertTrue(AuditoriaAdministrativa.objects.filter(acao="publicar").exists())
 
         with self.captureOnCommitCallbacks(execute=True):
             content.retirar(conteudo)

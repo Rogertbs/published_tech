@@ -1,37 +1,35 @@
 import json
+import logging
 import threading
 import unittest
+from datetime import timedelta
+from decimal import Decimal
 
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
+from ai import instrumentation
+from ai.providers import OpenRouterProvedor
+from auditoria.models import AuditoriaAdministrativa
 from content import services as content
-from content.models import Conteudo, EstadoConteudo, Secao, Versao
+from content.models import Conteudo, Publicacao, Secao, Versao
+from content.services import HOME_KEY
+from finance import services as orcamento
+from finance.models import ConfiguracaoOrcamento, EventoOrcamento
 from sources import services as sources
 from sources.models import Fonte, TipoFonte
-
-
-def gh_get(items):
-    def _get(url, headers):
-        return 200, {}, json.dumps({"items": items})
-
-    return _get
-
-
-def repo(id_, name, stars):
-    return {
-        "id": id_,
-        "full_name": name,
-        "html_url": f"https://github.com/{name}",
-        "description": "d",
-        "licenca": "MIT",
-        "stargazers_count": stars,
-    }
+from tests.factories import gh_get, repo
 
 
 class CacheIndisponivelTests(TestCase):
+    def setUp(self):
+        logging.disable(logging.CRITICAL)
+
+    def tearDown(self):
+        logging.disable(logging.NOTSET)
+
     @override_settings(CACHES={"default": {"BACKEND": "tests.broken_cache.BrokenCache"}})
     def test_api_serve_da_fonte_de_verdade(self):
         conteudo = Conteudo.objects.create(slug="p1", secao=Secao.ARTIGOS, tipo="artigo")
@@ -41,8 +39,27 @@ class CacheIndisponivelTests(TestCase):
             content.publicar(conteudo, versao)
 
         self.assertEqual(self.client.get("/api/publico/home").status_code, 200)
-        self.assertEqual(self.client.get("/api/publico/artigo/p1").status_code, 200)
         self.assertEqual(self.client.get("/api/publico/artigo/p1").json()["titulo"], "T")
+
+
+class CacheRepopulaTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_cache_reconstroi_apos_perda(self):
+        conteudo = Conteudo.objects.create(slug="p1", secao=Secao.ARTIGOS, tipo="artigo")
+        versao = Versao.objects.create(conteudo=conteudo, titulo="T", corpo="c")
+        content.aprovar(versao)
+        with self.captureOnCommitCallbacks(execute=True):
+            content.publicar(conteudo, versao)
+
+        self.client.get("/api/publico/home")
+        self.assertIsNotNone(cache.get(HOME_KEY))
+
+        cache.clear()
+        self.assertIsNone(cache.get(HOME_KEY))
+        self.client.get("/api/publico/home")
+        self.assertIsNotNone(cache.get(HOME_KEY))
 
 
 class RascunhoIsoladoTests(TestCase):
@@ -65,8 +82,7 @@ class RascunhoIsoladoTests(TestCase):
         self.client.get("/api/publico/artigo/p1")
 
         content.editar(conteudo, titulo="Rascunho novo", corpo="c2")
-        resposta = self.client.get("/api/publico/artigo/p1")
-        self.assertEqual(resposta.json()["titulo"], "Publicado")
+        self.assertEqual(self.client.get("/api/publico/artigo/p1").json()["titulo"], "Publicado")
 
 
 class FonteIndisponivelTests(TestCase):
@@ -81,6 +97,73 @@ class FonteIndisponivelTests(TestCase):
 
         resultado = sources.coletar_todas(http_get=http_get, sleep=lambda s: None)
         self.assertEqual(resultado["estado"], "falhou_parcial")
+
+
+class RecuperacaoWorkerTests(TestCase):
+    def test_lease_expirado_recupera_e_token_antigo_rejeitado(self):
+        from jobs import services as jobs
+        from jobs.models import EstadoTarefa, Tarefa
+
+        Tarefa.objects.create(tipo_tarefa="eco")
+        agora = timezone.now()
+        antiga = jobs.reservar_proxima("w1", agora=agora)
+        token_antigo = antiga.reserva_token
+
+        jobs.recuperar_abandonadas(agora=agora + timedelta(seconds=9999))
+        nova = jobs.reservar_proxima("w2")
+
+        self.assertEqual(Tarefa.objects.get().estado, EstadoTarefa.RESERVADA)
+        self.assertNotEqual(token_antigo, nova.reserva_token)
+        with self.assertRaises(jobs.ReservaInvalida):
+            jobs.concluir(antiga, token_antigo, {})
+
+
+class OrcamentoBloqueiaTests(TestCase):
+    def test_estouro_bloqueia_chamada_paga(self):
+        config = ConfiguracaoOrcamento.get_solo()
+        config.limite_diario = Decimal("0.001")
+        config.save()
+        chamadas = []
+
+        def http_post(url, headers, body):
+            chamadas.append(url)
+            return 200, {}, json.dumps({"choices": [{"message": {"content": "x"}}]})
+
+        provedor = OpenRouterProvedor(
+            api_key="k", base_url="https://openrouter.ai/api/v1", modelo_padrao="m", http_post=http_post
+        )
+        with self.assertRaises(orcamento.OrcamentoExcedido):
+            instrumentation.executar_texto(
+                "x", finalidade="redacao", provedor=provedor, custo_estimado=Decimal("1.0")
+            )
+
+        self.assertEqual(chamadas, [])
+        self.assertEqual(EventoOrcamento.objects.count(), 1)
+
+
+class PublicacaoIdempotenteTests(TestCase):
+    def test_publicar_mesma_versao_nao_duplica(self):
+        conteudo = Conteudo.objects.create(slug="p1", secao=Secao.ARTIGOS, tipo="artigo")
+        versao = Versao.objects.create(conteudo=conteudo, titulo="T", corpo="c")
+        content.aprovar(versao)
+        with self.captureOnCommitCallbacks(execute=True):
+            content.publicar(conteudo, versao)
+            content.publicar(conteudo, versao)
+
+        ativas = Publicacao.objects.filter(conteudo=conteudo, retirado_em__isnull=True)
+        self.assertEqual(ativas.count(), 1)
+
+
+class AuditoriaTests(TestCase):
+    def test_acoes_geram_auditoria(self):
+        conteudo = Conteudo.objects.create(slug="p1", secao=Secao.ARTIGOS, tipo="artigo")
+        versao = Versao.objects.create(conteudo=conteudo, titulo="T", corpo="c")
+        content.aprovar(versao)
+        with self.captureOnCommitCallbacks(execute=True):
+            content.publicar(conteudo, versao)
+
+        acoes = set(AuditoriaAdministrativa.objects.values_list("acao", flat=True))
+        self.assertTrue({"aprovar", "publicar"}.issubset(acoes))
 
 
 @unittest.skipUnless(connection.vendor == "postgresql", "requer PostgreSQL para SKIP LOCKED")

@@ -47,7 +47,7 @@ def invalidar_publico(conteudo: Conteudo) -> None:
         for ordem in range(1, 6):
             cache.delete(item_key(conteudo.slug, ordem))
     except Exception:
-        logger.warning("Não foi possível invalidar o cache da API.")
+        logger.warning("Não foi possível invalidar o cache da API.", exc_info=True)
 
     redis_url = getattr(settings, "REDIS_URL", None)
     if not redis_url:
@@ -56,7 +56,7 @@ def invalidar_publico(conteudo: Conteudo) -> None:
         client = redis.Redis.from_url(redis_url)
         client.delete(*_page_cache_keys(conteudo))
     except Exception:
-        logger.warning("Não foi possível invalidar o cache de páginas no Redis.")
+        logger.warning("Não foi possível invalidar o cache de páginas no Redis.", exc_info=True)
 
 
 def _lock_conteudo(conteudo: Conteudo) -> Conteudo:
