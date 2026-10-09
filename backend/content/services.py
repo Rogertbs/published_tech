@@ -70,6 +70,8 @@ def versao_publicavel(conteudo: Conteudo) -> Versao | None:
     versao = conteudo.versao_em_edicao
     if versao is not None and hasattr(versao, "aprovacao"):
         return versao
+    if not conteudo.esta_publicado:
+        return conteudo.versoes.filter(aprovacao__isnull=False).order_by("-criado_em").first()
     return None
 
 

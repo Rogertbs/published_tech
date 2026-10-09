@@ -163,6 +163,18 @@ class CicloEditorialTests(TestCase):
         self.assertEqual(v2.itens.count(), 1)
         self.assertEqual(v2.itens.get().dados["full_name"], "org/a")
 
+    def test_republicar_versao_aprovada_apos_retirada(self):
+        conteudo, v1 = self.publicar_v1()
+        services.retirar(conteudo)
+
+        publicavel = services.versao_publicavel(conteudo)
+        self.assertEqual(publicavel, v1)
+        services.publicar(conteudo, publicavel)
+
+        conteudo.refresh_from_db()
+        self.assertEqual(conteudo.estado, EstadoConteudo.PUBLICADO)
+        self.assertEqual(conteudo.versao_publicada_id, v1.pk)
+
     def test_aprovacao_registra_origem_responsavel_e_timestamp(self):
         _, versao = self.publicar_v1()
         aprovacao = Aprovacao.objects.get(versao=versao)
