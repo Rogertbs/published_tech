@@ -1,0 +1,57 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getHome, formatDate } from "../lib/api";
+
+const home = await getHome();
+const artigoPrincipal = home.artigos[0] ?? null;
+const demais = home.artigos.slice(1);
+const blocos = [
+  { titulo: "Destaques GitHub", href: "/secao/destaques-github", itens: home.destaques_github },
+  { titulo: "Radar Hugging Face", href: "/secao/radar-hf", itens: home.radar_hf },
+];
+const vazio = home.artigos.length === 0 && home.destaques_github.length === 0 && home.radar_hf.length === 0;
+---
+<BaseLayout>
+  <h2>Últimas</h2>
+  {vazio ? (
+    <p class="empty">Nenhum conteúdo publicado ainda.</p>
+  ) : (
+    <>
+      {artigoPrincipal && (
+        <section class="card hero">
+          <span class="kicker">Destaque</span>
+          <h3><a href={`/artigo/${artigoPrincipal.slug}`}>{artigoPrincipal.titulo}</a></h3>
+          <p>{artigoPrincipal.resumo}</p>
+          <p class="meta">{formatDate(artigoPrincipal.publicado_em)}</p>
+        </section>
+      )}
+      <div class="grid">
+        {demais.map((item) => (
+          <article class="card">
+            <span class="kicker">{item.secao}</span>
+            <h3><a href={`/artigo/${item.slug}`}>{item.titulo}</a></h3>
+            <p class="meta">{formatDate(item.publicado_em)}</p>
+          </article>
+        ))}
+      </div>
+      {blocos.map((bloco) => (
+        <section>
+          <h2><a href={bloco.href}>{bloco.titulo}</a></h2>
+          {bloco.itens.length === 0 ? (
+            <p class="empty">Sem itens por enquanto.</p>
+          ) : (
+            <div class="grid">
+              {bloco.itens.map((item) => (
+                <article class="card">
+                  <span class="kicker">{bloco.titulo}</span>
+                  <h3><a href={`/artigo/${item.slug}`}>{item.titulo}</a></h3>
+                  <p class="meta">{formatDate(item.publicado_em)}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
+    </>
+  )}
+</BaseLayout>

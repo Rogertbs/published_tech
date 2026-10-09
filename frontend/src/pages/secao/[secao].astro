@@ -1,0 +1,27 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getSecao, formatDate } from "../../lib/api";
+
+const { secao } = Astro.params;
+const data = await getSecao(secao);
+
+if (!data) {
+  return Astro.redirect("/404");
+}
+---
+<BaseLayout title={`Seção: ${secao}`}>
+  <h1>{secao}</h1>
+  {data.itens.length === 0 ? (
+    <p class="empty">Sem conteúdo publicado nesta seção.</p>
+  ) : (
+    <div class="grid">
+      {data.itens.map((item) => (
+        <article class="card">
+          <h3><a href={`/artigo/${item.slug}`}>{item.titulo}</a></h3>
+          <p>{item.resumo}</p>
+          <p class="meta">{formatDate(item.publicado_em)}</p>
+        </article>
+      ))}
+    </div>
+  )}
+</BaseLayout>

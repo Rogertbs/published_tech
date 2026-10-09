@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+db.sqlite3
+backend/staticfiles/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.astro/
+
+# Env / logs
+.env
+*.log
