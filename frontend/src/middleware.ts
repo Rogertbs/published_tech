@@ -10,7 +10,10 @@ async function getRedis() {
   if (!redisClient && !redisTried) {
     redisTried = true;
     try {
-      const client = createClient({ url });
+      const client = createClient({
+        url,
+        socket: { connectTimeout: 1000, reconnectStrategy: false },
+      });
       client.on("error", () => {});
       await client.connect();
       redisClient = client;

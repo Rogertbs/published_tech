@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [ "${START_REDIS:-true}" = "true" ]; then
-  redis-server --daemonize yes --save "" --appendonly no
+  redis-server --daemonize yes --save "" --appendonly no --bind 0.0.0.0 --protected-mode no
 fi
 
 echo "Aguardando o banco de dados..."
