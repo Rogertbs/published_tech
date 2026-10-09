@@ -13,10 +13,23 @@ class TipoConteudo(models.TextChoices):
     LISTA = "lista", "Lista (curadoria)"
 
 
+class EstadoConteudo(models.TextChoices):
+    RASCUNHO = "rascunho", "Rascunho"
+    AGUARDANDO_REVISAO = "aguardando_revisao", "Aguardando revisão"
+    APROVADO = "aprovado", "Aprovado"
+    PUBLICADO = "publicado", "Publicado"
+    PUBLICADO_EM_EDICAO = "publicado_em_edicao", "Publicado em edição"
+    REJEITADO = "rejeitado", "Rejeitado"
+    RETIRADO = "retirado", "Retirado"
+
+
 class Conteudo(models.Model):
     slug = models.SlugField(max_length=200, unique=True)
     secao = models.CharField(max_length=32, choices=Secao.choices)
     tipo = models.CharField(max_length=16, choices=TipoConteudo.choices, default=TipoConteudo.ARTIGO)
+    estado = models.CharField(
+        max_length=24, choices=EstadoConteudo.choices, default=EstadoConteudo.RASCUNHO
+    )
     versao_publicada = models.ForeignKey(
         "Versao",
         null=True,
@@ -51,6 +64,7 @@ class Versao(models.Model):
     titulo = models.CharField(max_length=300)
     resumo = models.TextField(blank=True, default="")
     corpo = models.TextField(blank=True, default="")
+    metadados = models.JSONField(default=dict, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:

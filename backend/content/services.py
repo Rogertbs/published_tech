@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
-from content.models import Aprovacao, Conteudo, Publicacao, Versao
+from content.models import Aprovacao, Conteudo, EstadoConteudo, Publicacao, Versao
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,9 @@ def aprovar(versao: Versao, aprovador=None, origem: str = Aprovacao.Origem.HUMAN
         versao=versao,
         defaults={"aprovador": aprovador, "origem": origem, "regras_avaliadas": []},
     )
+    conteudo = versao.conteudo
+    conteudo.estado = EstadoConteudo.APROVADO
+    conteudo.save(update_fields=["estado", "atualizado_em"])
     return aprovacao
 
 
@@ -85,7 +88,16 @@ def publicar(conteudo: Conteudo, versao: Versao, quando=None) -> Publicacao:
     conteudo.versao_publicada = versao
     conteudo.versao_em_edicao = None
     conteudo.publicado_em = quando
-    conteudo.save(update_fields=["versao_publicada", "versao_em_edicao", "publicado_em", "atualizado_em"])
+    conteudo.estado = EstadoConteudo.PUBLICADO
+    conteudo.save(
+        update_fields=[
+            "versao_publicada",
+            "versao_em_edicao",
+            "publicado_em",
+            "estado",
+            "atualizado_em",
+        ]
+    )
 
     transaction.on_commit(lambda: invalidar_publico(conteudo))
     return publicacao
@@ -97,6 +109,7 @@ def retirar(conteudo: Conteudo, quando=None) -> None:
     Publicacao.objects.filter(conteudo=conteudo, retirado_em__isnull=True).update(retirado_em=quando)
     conteudo.versao_publicada = None
     conteudo.publicado_em = None
-    conteudo.save(update_fields=["versao_publicada", "publicado_em", "atualizado_em"])
+    conteudo.estado = EstadoConteudo.RETIRADO
+    conteudo.save(update_fields=["versao_publicada", "publicado_em", "estado", "atualizado_em"])
 
     transaction.on_commit(lambda: invalidar_publico(conteudo))

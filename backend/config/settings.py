@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "ai",
     "finance",
     "configuracao",
+    "pipeline",
     "public",
 ]
 

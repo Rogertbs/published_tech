@@ -44,6 +44,9 @@ class ChamadaIA(models.Model):
     tarefa = models.ForeignKey(
         "jobs.Tarefa", null=True, blank=True, on_delete=models.SET_NULL, related_name="chamadas_ia"
     )
+    execucao = models.ForeignKey(
+        "pipeline.Execucao", null=True, blank=True, on_delete=models.SET_NULL, related_name="chamadas_ia"
+    )
     conteudo_id = models.IntegerField(null=True, blank=True)
     correlacao = models.JSONField(default=dict, blank=True)
 

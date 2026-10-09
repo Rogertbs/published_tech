@@ -162,6 +162,23 @@ origem do custo).
 - `testar_prompt` gera **prévia privada** (finalidade `teste_prompt`), sem publicar, com
   custo contabilizado separadamente nos relatórios.
 
+## Pipeline editorial (LangGraph)
+
+A tarefa de fila `pipeline` (ou `executar_pipeline`) roda um grafo LangGraph com etapas
+explícitas: `selecionar` → `evidencias` → `redigir` → `revisar` → `ilustrar` → `salvar`.
+
+- Cada etapa é **idempotente e persistida** (`EtapaExecucao`): retomar a mesma `Execucao`
+  não repete etapas concluídas nem gasta IA de novo.
+- **Evidências** (`Evidencia`) são vinculadas à versão; a **revisão** retém o conteúdo
+  com motivos (`sem_afirmacoes`, `afirmacao_sem_evidencia`, `contradicao_factual`) sem
+  ciclos de reescrita.
+- Rascunho vai para `aguardando_revisao` quando a revisão passa; caso contrário fica em
+  `rascunho` com os motivos.
+- A **ilustração é mocada** no dev (uma imagem de placeholder); falha de imagem gera
+  rascunho sem imagem e segue as regras normais de aprovação.
+- `Execucao` registra estado, snapshot de configuração e erro; `ChamadaIA` fica ligada à
+  execução.
+
 ## Cache (render-once-and-cache)
 
 O HTML público é gerado uma vez e guardado no Redis **sem TTL**; só sai por
