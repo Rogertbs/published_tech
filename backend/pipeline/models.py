@@ -28,6 +28,7 @@ class Execucao(models.Model):
     )
     iniciado_em = models.DateTimeField(null=True, blank=True)
     finalizado_em = models.DateTimeField(null=True, blank=True)
+    motivo = models.TextField(blank=True, default="")
     erro = models.TextField(blank=True, default="")
     criado_em = models.DateTimeField(auto_now_add=True)
 

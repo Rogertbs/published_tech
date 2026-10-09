@@ -1,5 +1,6 @@
 from typing import TypedDict
 
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -28,6 +29,7 @@ class EstadoPipeline(TypedDict, total=False):
     fonte_resumo: str
     contradicao: bool
     texto: str
+    redacao_status: str
     revisao: dict
     imagem: dict
     conteudo_id: int
@@ -57,12 +59,19 @@ def etapa(nome):
     def decorator(fn):
         def wrapper(state: EstadoPipeline) -> dict:
             execucao = Execucao.objects.get(pk=state["execucao_id"])
-            existente = EtapaExecucao.objects.filter(execucao=execucao, nome=nome).first()
-            if existente is not None:
-                return existente.saida
-            saida = fn(execucao, state)
-            EtapaExecucao.objects.create(execucao=execucao, nome=nome, saida=saida)
-            return saida
+            with transaction.atomic():
+                qs = EtapaExecucao.objects.filter(execucao=execucao, nome=nome)
+                if connection.vendor == "postgresql":
+                    qs = qs.select_for_update()
+                existente = qs.first()
+                if existente is not None:
+                    return existente.saida
+                saida = fn(execucao, state)
+                try:
+                    EtapaExecucao.objects.create(execucao=execucao, nome=nome, saida=saida)
+                except IntegrityError:
+                    return EtapaExecucao.objects.get(execucao=execucao, nome=nome).saida
+                return saida
 
         return wrapper
 
@@ -83,17 +92,22 @@ def no_evidencias(execucao, state):
     ):
         registro = candidato.registro
         dados = registro.dados
-        evidencia = Evidencia.objects.create(
-            execucao=execucao,
-            fonte=registro.fonte,
-            registro=registro,
-            tipo=registro.fonte.tipo,
-            url=dados.get("html_url") or dados.get("url") or "",
-            trecho=dados.get("description") or dados.get("resumo") or "",
-            coletado_em=registro.coletado_em,
-        )
-        evidencias.append(evidencia.pk)
-        afirmacoes.append({"texto": _resumo_registro(dados), "evidencia_ids": [evidencia.pk]})
+        url = dados.get("html_url") or dados.get("url") or ""
+        trecho = dados.get("description") or dados.get("resumo") or ""
+        evidencia_ids = []
+        if url or trecho:
+            evidencia = Evidencia.objects.create(
+                execucao=execucao,
+                fonte=registro.fonte,
+                registro=registro,
+                tipo=registro.fonte.tipo,
+                url=url,
+                trecho=trecho,
+                coletado_em=registro.coletado_em,
+            )
+            evidencias.append(evidencia.pk)
+            evidencia_ids.append(evidencia.pk)
+        afirmacoes.append({"texto": _resumo_registro(dados), "evidencia_ids": evidencia_ids})
         resumos.append(_resumo_registro(dados))
         chave = dados.get("full_name") or dados.get("id")
         atual = (dados.get("licenca"), dados.get("description") or dados.get("resumo"))
@@ -119,20 +133,23 @@ def no_redigir(execucao, state):
         execucao=execucao,
         fonte_texto=state.get("fonte_resumo", ""),
     )
-    return {"texto": resposta.texto}
+    return {"texto": resposta.texto, "redacao_status": resposta.chamada.status}
 
 
 @etapa("revisar")
 def no_revisar(execucao, state):
-    return {"revisao": avaliar_revisao(state.get("afirmacoes", []), state.get("contradicao", False))}
+    redacao_ok = state.get("redacao_status") == "sucesso" and bool(str(state.get("texto", "")).strip())
+    return {
+        "revisao": avaliar_revisao(state.get("afirmacoes", []), state.get("contradicao", False), redacao_ok)
+    }
 
 
-def avaliar_revisao(afirmacoes: list, contradicao: bool) -> dict:
+def avaliar_revisao(afirmacoes: list, contradicao: bool, redacao_ok: bool = True) -> dict:
     motivos = []
-    if not afirmacoes:
-        motivos.append("sem_afirmacoes")
-    if any(not a.get("evidencia_ids") for a in afirmacoes):
-        motivos.append("afirmacao_sem_evidencia")
+    if not afirmacoes or any(not a.get("evidencia_ids") for a in afirmacoes):
+        motivos.append("evidencia_insuficiente")
+    if not redacao_ok:
+        motivos.append("geracao_falhou")
     if contradicao:
         motivos.append("contradicao_factual")
     return {"ok": not motivos, "motivos": motivos}
@@ -168,6 +185,8 @@ def no_salvar(execucao, state):
             "revisao": revisao,
         },
     )
+    conteudo.versao_em_edicao = versao
+    conteudo.save(update_fields=["versao_em_edicao", "atualizado_em"])
     Evidencia.objects.filter(pk__in=state.get("evidencias", [])).update(versao=versao)
     return {
         "conteudo_id": conteudo.pk,
@@ -188,7 +207,11 @@ def construir_grafo():
     grafo.add_edge("selecionar", "evidencias")
     grafo.add_edge("evidencias", "redigir")
     grafo.add_edge("redigir", "revisar")
-    grafo.add_edge("revisar", "ilustrar")
+    grafo.add_conditional_edges(
+        "revisar",
+        lambda state: "ilustrar" if state.get("revisao", {}).get("ok") else "salvar",
+        {"ilustrar": "ilustrar", "salvar": "salvar"},
+    )
     grafo.add_edge("ilustrar", "salvar")
     grafo.add_edge("salvar", END)
     return grafo.compile(checkpointer=InMemorySaver())
@@ -218,7 +241,7 @@ def executar_pipeline(*, tarefa=None, secao=Secao.DESTAQUES_GITHUB, execucao=Non
         grafo = construir_grafo()
         resultado = grafo.invoke(state, config={"configurable": {"thread_id": str(execucao.pk)}})
         execucao.estado = EstadoExecucao.CONCLUIDA
-        execucao.erro = resultado.get("motivo", "")
+        execucao.motivo = resultado.get("motivo", "")
     except OrcamentoExcedido as exc:
         execucao.estado = EstadoExecucao.FALHOU_PARCIAL
         execucao.erro = str(exc)
@@ -226,5 +249,5 @@ def executar_pipeline(*, tarefa=None, secao=Secao.DESTAQUES_GITHUB, execucao=Non
         execucao.estado = EstadoExecucao.FALHOU
         execucao.erro = str(exc)
     execucao.finalizado_em = timezone.now()
-    execucao.save(update_fields=["estado", "erro", "finalizado_em"])
+    execucao.save(update_fields=["estado", "motivo", "erro", "finalizado_em"])
     return execucao

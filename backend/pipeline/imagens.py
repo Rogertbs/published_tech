@@ -1,7 +1,3 @@
-class IlustracaoIndisponivel(Exception):
-    pass
-
-
 def gerar_ilustracao(descricao: str = "") -> dict:
     return {
         "url": "/static/ilustracoes/placeholder.png",

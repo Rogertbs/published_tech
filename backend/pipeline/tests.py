@@ -41,6 +41,7 @@ class PipelineTests(TestCase):
         conteudo = Conteudo.objects.get()
         self.assertEqual(conteudo.estado, EstadoConteudo.AGUARDANDO_REVISAO)
         versao = Versao.objects.get()
+        self.assertEqual(conteudo.versao_em_edicao_id, versao.pk)
         self.assertTrue(versao.corpo)
         self.assertEqual(Evidencia.objects.filter(versao=versao).count(), 2)
         self.assertEqual(ChamadaIA.objects.filter(finalidade="redacao").count(), 1)
@@ -49,9 +50,17 @@ class PipelineTests(TestCase):
     def test_sem_candidatos_retem_rascunho(self):
         execucao = motor.executar_pipeline(secao="destaques-github")
 
-        conteudo = Conteudo.objects.get()
-        self.assertEqual(conteudo.estado, EstadoConteudo.RASCUNHO)
-        self.assertIn("sem_afirmacoes", execucao.erro)
+        self.assertEqual(Conteudo.objects.get().estado, EstadoConteudo.RASCUNHO)
+        self.assertIn("evidencia_insuficiente", execucao.motivo)
+
+    def test_afirmacao_sem_evidencia_retem(self):
+        sem_fonte = {"id": "9", "full_name": "org/vazio", "html_url": "", "description": "", "licenca": "MIT"}
+        seed_github([sem_fonte])
+        execucao = motor.executar_pipeline(secao="destaques-github")
+
+        self.assertEqual(Conteudo.objects.get().estado, EstadoConteudo.RASCUNHO)
+        self.assertIn("evidencia_insuficiente", execucao.motivo)
+        self.assertEqual(Evidencia.objects.count(), 0)
 
     def test_contradicao_nao_resolvida(self):
         seed_github(
@@ -63,12 +72,13 @@ class PipelineTests(TestCase):
         execucao = motor.executar_pipeline(secao="destaques-github")
 
         self.assertEqual(Conteudo.objects.get().estado, EstadoConteudo.RASCUNHO)
-        self.assertIn("contradicao_factual", execucao.erro)
+        self.assertIn("contradicao_factual", execucao.motivo)
+        self.assertEqual(Versao.objects.get().metadados["imagem"], {})
 
     def test_avaliar_revisao_afirmacao_sem_evidencia(self):
         resultado = motor.avaliar_revisao([{"texto": "x", "evidencia_ids": []}], False)
         self.assertFalse(resultado["ok"])
-        self.assertIn("afirmacao_sem_evidencia", resultado["motivos"])
+        self.assertIn("evidencia_insuficiente", resultado["motivos"])
 
     def test_retomavel_sem_reexecutar_etapas(self):
         seed_github([dados("1", "org/a", estrelas=500)])
@@ -83,6 +93,27 @@ class PipelineTests(TestCase):
         self.assertEqual(ChamadaIA.objects.count(), chamadas)
         self.assertEqual(Evidencia.objects.count(), evidencias)
         self.assertEqual(EtapaExecucao.objects.filter(execucao=execucao).count(), 6)
+
+    def test_retomavel_apos_falha(self):
+        seed_github([dados("1", "org/a", estrelas=500)])
+        original = motor.avaliar_revisao
+        estado = {"n": 0}
+
+        def falha_uma_vez(*args, **kwargs):
+            estado["n"] += 1
+            if estado["n"] == 1:
+                raise RuntimeError("queda")
+            return original(*args, **kwargs)
+
+        with mock.patch("pipeline.motor.avaliar_revisao", side_effect=falha_uma_vez):
+            execucao = motor.executar_pipeline(secao="destaques-github")
+        self.assertEqual(execucao.estado, EstadoExecucao.FALHOU)
+        chamadas = ChamadaIA.objects.count()
+
+        retomada = motor.executar_pipeline(secao="destaques-github", execucao=execucao)
+        self.assertEqual(retomada.estado, EstadoExecucao.CONCLUIDA)
+        self.assertEqual(ChamadaIA.objects.count(), chamadas)
+        self.assertTrue(EtapaExecucao.objects.filter(execucao=execucao, nome="revisar").exists())
 
     def test_falha_de_imagem_gera_rascunho_sem_imagem(self):
         seed_github([dados("1", "org/a", estrelas=500)])
