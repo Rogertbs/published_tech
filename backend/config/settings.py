@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     "content",
     "jobs",
     "sources",
+    "ai",
     "public",
 ]
 
@@ -109,3 +110,9 @@ JOBS_BACKOFF_BASE = int(os.environ.get("JOBS_BACKOFF_BASE", "30"))
 JOBS_BACKOFF_FACTOR = int(os.environ.get("JOBS_BACKOFF_FACTOR", "4"))
 
 INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN")
+
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "mock")
+AI_MODELO_PADRAO = os.environ.get("AI_MODELO_PADRAO", "meta-llama/llama-3.3-70b-instruct:free")
+AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS", "30"))
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")

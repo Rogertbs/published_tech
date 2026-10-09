@@ -110,6 +110,22 @@ ativo/inativo. Desabilitar interrompe novas coletas sem apagar o histórico.
 Parâmetros úteis de `Fonte.parametros`: `janela_dias`, `min_estrelas`, `limite`,
 `language`, `topic`, `selecao`.
 
+## IA e instrumentação
+
+Toda chamada de modelo passa pela camada única `ai.instrumentation.executar_texto`,
+que registra uma `ChamadaIA` (provedor, modelo, finalidade, etapa, correlação,
+timestamps, duração, status, tentativa, request id, tokens, moeda, preço, custo e
+origem do custo).
+
+- Provedor substituível via `AI_PROVIDER`: `mock` (padrão, simulado, sem custo) e
+  `openrouter` (exige `OPENROUTER_API_KEY`; **sem fallback silencioso** se faltar).
+- Dev usa modelos **full free** da OpenRouter (`AI_MODELO_PADRAO`).
+- Custo: **informado** pelo provedor, senão **estimado** por `PrecoModelo` (USD), senão
+  **desconhecido**. Consumo desconhecido **nunca** é gravado como zero.
+- Falha, timeout e resultado incerto recebem status próprio (`erro`, `timeout`,
+  `incerto`).
+- Credenciais nunca são registradas na chamada nem expostas.
+
 ## Cache (render-once-and-cache)
 
 O HTML público é gerado uma vez e guardado no Redis **sem TTL**; só sai por
