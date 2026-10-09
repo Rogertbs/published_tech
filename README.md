@@ -85,7 +85,7 @@ curl localhost:8010/api/execucoes/1
 - Se `INTERNAL_API_TOKEN` estiver definido, `POST/GET /api/execucoes` exige o header
   `X-Internal-Token`.
 
-## Fontes e coleta (GitHub)
+## Fontes e coleta (GitHub e Hugging Face)
 
 Fontes são instâncias configuráveis no admin (`Fonte`): tipo, nome, credencial por
 **referência** (nome de uma variável de ambiente, ex.: `GITHUB_TOKEN`), parâmetros e
@@ -97,6 +97,12 @@ ativo/inativo. Desabilitar interrompe novas coletas sem apagar o histórico.
 - O conector GitHub usa a Search API com qualificadores datados (`stars:>=`, `pushed:>=`,
   `language:`, `topic:`), respeita o limite de taxa com backoff e normaliza os
   registros (id, nome, URL, linguagem, licença, métricas, datas).
+- O conector Hugging Face usa a Hub API (`sort=trendingScore&direction=-1&full=true`),
+  agrupa variantes da mesma família (por `base_model` ou variante do id) em um único
+  item e classifica cada item em uma das quatro categorias (`lancamento_confirmado`,
+  `nova_variante`, `modelo_antigo_atencao`, `atualizacao_repositorio`). Sem um anúncio
+  verificado, **não** marca lançamento confirmado nem usa a data de criação como prova
+  de lançamento; campos ausentes ficam `Desconhecido`.
 - Registros são deduplicados por `(fonte, chave_externa)`.
 - `selecionar_candidatos` ordena por pontuação (estrelas) e limita a seleção
   (`parametros.selecao`, padrão 5), registrando o `Candidato` e o motivo.

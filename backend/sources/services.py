@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from sources.connectors.base import ConectorError, RateLimitPersistente
 from sources.connectors.github import GitHubConector, urllib_get
+from sources.connectors.huggingface import HuggingFaceConector
 from sources.models import (
     Candidato,
     Coleta,
@@ -17,6 +18,7 @@ from sources.models import (
 
 CONECTORES = {
     TipoFonte.GITHUB: GitHubConector(),
+    TipoFonte.HUGGINGFACE: HuggingFaceConector(),
 }
 
 

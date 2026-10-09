@@ -6,6 +6,13 @@ class TipoFonte(models.TextChoices):
     HUGGINGFACE = "huggingface", "Hugging Face"
 
 
+class CategoriaModelo(models.TextChoices):
+    LANCAMENTO_CONFIRMADO = "lancamento_confirmado", "Lançamento confirmado"
+    NOVA_VARIANTE = "nova_variante", "Nova variante/quantização/fine-tuning"
+    MODELO_ANTIGO_ATENCAO = "modelo_antigo_atencao", "Modelo antigo que ganhou atenção"
+    ATUALIZACAO_REPOSITORIO = "atualizacao_repositorio", "Atualização de repositório sem lançamento"
+
+
 class EstadoColeta(models.TextChoices):
     EM_ANDAMENTO = "em_andamento", "Em andamento"
     OK = "ok", "OK"

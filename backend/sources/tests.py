@@ -1,10 +1,20 @@
 import json
 import os
+from datetime import timedelta
 
 from django.test import TestCase
+from django.utils import timezone
 
 from sources import services
-from sources.models import Candidato, Coleta, EstadoColeta, Fonte, RegistroNormalizado, TipoFonte
+from sources.models import (
+    Candidato,
+    CategoriaModelo,
+    Coleta,
+    EstadoColeta,
+    Fonte,
+    RegistroNormalizado,
+    TipoFonte,
+)
 
 
 def item(repo_id, full_name, estrelas, pushed="2026-10-08T00:00:00Z"):
@@ -164,3 +174,103 @@ class ColetaTests(TestCase):
         self.assertEqual(candidatos[1].registro.chave_externa, "3")
         self.assertTrue(candidatos[0].motivo)
         self.assertEqual(Coleta.objects.get(pk=coleta.pk).estado, EstadoColeta.OK)
+
+
+def hf_item(mid, trending=0, created=None, tags=None, pipeline="text-generation", gated=False, **extra):
+    dados = {
+        "id": mid,
+        "author": mid.split("/")[0],
+        "pipeline_tag": pipeline,
+        "library_name": "transformers",
+        "downloads": extra.pop("downloads", 0),
+        "likes": extra.pop("likes", 0),
+        "trendingScore": trending,
+        "createdAt": created or timezone.now().isoformat(),
+        "lastModified": timezone.now().isoformat(),
+        "tags": tags or [],
+        "gated": gated,
+    }
+    dados.update(extra)
+    return dados
+
+
+def get_lista(models, capturado=None):
+    def _get(url, headers):
+        if capturado is not None:
+            capturado.append((url, headers))
+        return 200, {}, json.dumps(models)
+
+    return _get
+
+
+class HuggingFaceTests(TestCase):
+    def fonte(self, **kwargs):
+        defaults = dict(tipo=TipoFonte.HUGGINGFACE, parametros={"limite": 30, "selecao": 5})
+        defaults.update(kwargs)
+        return Fonte.objects.create(nome="HF Radar", **defaults)
+
+    def test_agrupa_variantes_da_mesma_familia(self):
+        models = [
+            hf_item("org/model", trending=100, tags=["license:apache-2.0", "safetensors"]),
+            hf_item("org/model-GGUF", trending=500, tags=["base_model:org/model", "license:apache-2.0", "gguf"]),
+        ]
+        registros = services.obter_conector(self.fonte()).listar(
+            {"limite": 30}, None, http_get=get_lista(models), sleep=lambda s: None
+        )
+        self.assertEqual(len(registros), 1)
+        dados = registros[0]["dados"]
+        self.assertEqual(dados["id"], "org/model-GGUF")
+        self.assertEqual(sorted(dados["variantes"]), ["org/model", "org/model-GGUF"])
+        self.assertEqual(dados["categoria"], CategoriaModelo.NOVA_VARIANTE)
+
+    def test_categorias(self):
+        antigo = (timezone.now() - timedelta(days=400)).isoformat()
+        models = [
+            hf_item("org/base", trending=10),
+            hf_item("org/variante", trending=200, tags=["base_model:org/base"]),
+            hf_item("org/antigo", trending=1000, created=antigo),
+            hf_item("org/novo", trending=5),
+        ]
+        registros = services.obter_conector(self.fonte()).listar(
+            {"limite": 30}, None, http_get=get_lista(models), sleep=lambda s: None
+        )
+        por_id = {r["dados"]["id"]: r["dados"]["categoria"] for r in registros}
+        self.assertNotIn("org/base", por_id)
+        self.assertEqual(por_id["org/variante"], CategoriaModelo.NOVA_VARIANTE)
+        self.assertEqual(por_id["org/antigo"], CategoriaModelo.MODELO_ANTIGO_ATENCAO)
+        self.assertEqual(por_id["org/novo"], CategoriaModelo.ATUALIZACAO_REPOSITORIO)
+
+    def test_nao_usa_created_at_como_lancamento(self):
+        models = [hf_item("org/novo", trending=100)]
+        registro = services.obter_conector(self.fonte()).listar(
+            {"limite": 30}, None, http_get=get_lista(models), sleep=lambda s: None
+        )[0]["dados"]
+        self.assertFalse(registro["lancamento_confirmado"])
+        self.assertNotEqual(registro["categoria"], CategoriaModelo.LANCAMENTO_CONFIRMADO)
+        self.assertEqual(registro["data_lancamento"], "Desconhecido")
+
+    def test_campos_ausentes_ficam_desconhecidos(self):
+        models = [hf_item("org/x", trending=1)]
+        dados = services.obter_conector(self.fonte()).listar(
+            {"limite": 30}, None, http_get=get_lista(models), sleep=lambda s: None
+        )[0]["dados"]
+        self.assertEqual(dados["licenca"], "Desconhecido")
+        self.assertEqual(dados["parametros"], "Desconhecido")
+        self.assertEqual(dados["base_model"], "Desconhecido")
+        self.assertEqual(dados["anuncio"], "Desconhecido")
+        self.assertFalse(dados["acesso_restrito"])
+
+    def test_coleta_hf_via_service(self):
+        fonte = self.fonte()
+        models = [hf_item("org/a", trending=100, tags=["license:mit"]), hf_item("org/b", trending=50)]
+        coleta = services.coletar(fonte, http_get=get_lista(models), sleep=lambda s: None)
+        self.assertEqual(coleta.estado, EstadoColeta.OK)
+        self.assertEqual(RegistroNormalizado.objects.filter(fonte=fonte).count(), 2)
+        self.assertEqual(Candidato.objects.count(), 2)
+
+    def test_acesso_restrito(self):
+        models = [hf_item("org/gated", trending=5, gated="auto", tags=["license:apache-2.0"])]
+        dados = services.obter_conector(self.fonte()).listar(
+            {"limite": 30}, None, http_get=get_lista(models), sleep=lambda s: None
+        )[0]["dados"]
+        self.assertTrue(dados["acesso_restrito"])
