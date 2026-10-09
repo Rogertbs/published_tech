@@ -150,10 +150,15 @@ origem do custo).
   `exigir_evidencia`, `bloqueios_publicacao`, `orcamento_obrigatorio`, `texto_fonte_e_dado`);
   `geral`, `secao` e `agente` só sobrescrevem os **campos permitidos**. Campo protegido
   não pode ser definido fora do escopo `sistema`.
-- Cada execução pode registrar um **snapshot** (`capturar_snapshot`) com os campos
-  resolvidos e as versões efetivas usadas.
-- Prompt vazio é rejeitado; **texto de fonte** é sempre tratado como dado
-  (`montar_prompt_com_fonte`), nunca como instrução.
+- Cada execução (tarefa do worker) registra um **snapshot**
+  (`configuracao.services.capturar_snapshot`) com os campos resolvidos e as versões
+  efetivas usadas; alterações posteriores não o afetam.
+- Suporta **comparar** (`comparar`), **restaurar** (`restaurar`, cria nova versão) e
+  **presets** (`criar_versao_de_preset`). Alterações geram registro em
+  `AuditoriaAdministrativa`.
+- Prompt vazio é rejeitado; config de agente exige `prompt`; **texto de fonte** é sempre
+  tratado como dado (`montar_prompt_com_fonte`; `executar_texto(..., fonte_texto=...)`),
+  nunca como instrução.
 - `testar_prompt` gera **prévia privada** (finalidade `teste_prompt`), sem publicar, com
   custo contabilizado separadamente nos relatórios.
 

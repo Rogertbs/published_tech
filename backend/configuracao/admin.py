@@ -1,6 +1,11 @@
 from django.contrib import admin, messages
 
-from configuracao.models import Configuracao, SnapshotConfiguracao, VersaoConfiguracao
+from configuracao.models import (
+    AuditoriaAdministrativa,
+    Configuracao,
+    SnapshotConfiguracao,
+    VersaoConfiguracao,
+)
 from configuracao.services import ativar_versao
 
 
@@ -36,6 +41,16 @@ class VersaoConfiguracaoAdmin(admin.ModelAdmin):
 class SnapshotConfiguracaoAdmin(admin.ModelAdmin):
     list_display = ("id", "tarefa", "criado_em")
     readonly_fields = ("tarefa", "campos", "versoes", "criado_em")
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(AuditoriaAdministrativa)
+class AuditoriaAdministrativaAdmin(admin.ModelAdmin):
+    list_display = ("id", "acao", "entidade", "entidade_id", "usuario", "criado_em")
+    list_filter = ("acao", "entidade")
+    readonly_fields = ("usuario", "acao", "entidade", "entidade_id", "antes", "depois", "criado_em")
 
     def has_add_permission(self, request):
         return False

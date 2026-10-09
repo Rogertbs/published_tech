@@ -202,8 +202,19 @@ def processar_uma(worker_id: str | None = None, agora=None) -> bool:
         _reverter_para_fila(tarefa, tarefa.reserva_token)
         registrar_evento(tarefa, "suspensa (motor pausado)")
         return False
+    _capturar_snapshot(tarefa)
     executar(tarefa)
     return True
+
+
+def _capturar_snapshot(tarefa: Tarefa) -> None:
+    from configuracao import services as configuracao
+
+    configuracao.capturar_snapshot(
+        secao=tarefa.parametros.get("secao", ""),
+        agente=tarefa.parametros.get("agente", ""),
+        tarefa=tarefa,
+    )
 
 
 def rodar_agendador(agora=None) -> int:

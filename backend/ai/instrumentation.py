@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from ai.models import ChamadaIA, OrigemCusto, PrecoModelo, StatusChamada
+from ai.prompts import envolver_fonte_como_dado
 from ai.providers import (
     ProvedorErro,
     ProvedorIncerto,
@@ -70,9 +71,11 @@ def executar_texto(
     correlacao: dict | None = None,
     tentativa: int = 1,
     custo_estimado=None,
+    fonte_texto: str | None = None,
 ) -> RespostaIA:
     provedor = provedor or obter_provedor()
     modelo_solicitado = modelo or provedor.modelo_padrao
+    prompt_efetivo = prompt if not fonte_texto else f"{prompt}\n\n{envolver_fonte_como_dado(fonte_texto)}"
     reserva = _reservar_se_pago(provedor, modelo_solicitado, custo_estimado)
     inicio = timezone.now()
     t0 = time.monotonic()
@@ -81,7 +84,7 @@ def executar_texto(
     erro = ""
     resposta = None
     try:
-        resposta = provedor.gerar_texto(prompt, parametros or {}, modelo_solicitado)
+        resposta = provedor.gerar_texto(prompt_efetivo, parametros or {}, modelo_solicitado)
     except ProvedorTimeout as exc:
         status, erro = StatusChamada.TIMEOUT, str(exc)
     except ProvedorIncerto as exc:
