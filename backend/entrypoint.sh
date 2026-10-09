@@ -18,4 +18,9 @@ if [ -n "${DJANGO_SUPERUSER_USERNAME:-}" ]; then
   python manage.py createsuperuser --noinput 2>/dev/null || true
 fi
 
+if [ "${START_JOBS:-true}" = "true" ]; then
+  python manage.py run_worker --loop &
+  python manage.py run_scheduler --loop &
+fi
+
 exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3

@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "content",
+    "jobs",
     "public",
 ]
 
@@ -101,3 +102,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REDIS_URL = os.environ.get("REDIS_URL")
+
+JOBS_LEASE_SECONDS = int(os.environ.get("JOBS_LEASE_SECONDS", "60"))
+JOBS_BACKOFF_BASE = int(os.environ.get("JOBS_BACKOFF_BASE", "30"))
+JOBS_BACKOFF_FACTOR = int(os.environ.get("JOBS_BACKOFF_FACTOR", "4"))

@@ -4,12 +4,12 @@ Portal editorial (PT-BR) sobre IA, software e infraestrutura. Motor de geração
 assistida por IA com **publicação aprovada por humano**. Especificação em
 `docs/especificacao-published-tech.md`; tickets em `.scratch/mvp/issues/`.
 
-Este repositório contém o **ticket 01 — esqueleto de ponta a ponta**.
+Este repositório contém o **ticket 01 — esqueleto de ponta a ponta** e o **ticket 02 — fila, worker e agendador**.
 
 ## Estrutura
 
-- `backend/` — Django (API pública + admin). No dev, o mesmo container também roda
-  Redis (cache). Worker/agendador entram no ticket 02.
+- `backend/` — Django (API pública + admin + fila/worker/agendador). No dev, o mesmo
+  container também roda Redis (cache).
 - `frontend/` — Astro (SSR) consumindo a API Django, com middleware de cache.
 - `docker-compose.yml` — **3 containers**: `db` (PostgreSQL), `backend`, `frontend`.
 
@@ -51,6 +51,35 @@ API_BASE_URL=http://127.0.0.1:8010 node dist/server/entry.mjs
 cd backend
 python manage.py test
 ```
+
+## Fila, worker e agendador
+
+O container `backend` inicia, por padrão, um worker e um agendador em loop
+(`START_JOBS=true`). Para rodar manualmente:
+
+```bash
+cd backend
+python manage.py run_worker          # processa uma tarefa e sai
+python manage.py run_worker --loop   # loop contínuo
+python manage.py run_scheduler       # cria tarefas devidas e sai
+python manage.py run_scheduler --loop
+```
+
+Execução avulsa por HTTP (independente do flag de automação; recusada se o motor
+estiver pausado):
+
+```bash
+curl -X POST localhost:8010/api/execucoes \
+  -H 'content-type: application/json' \
+  -d '{"tipo":"eco","chave_idempotencia":"manual-1"}'
+curl localhost:8010/api/execucoes/1
+```
+
+- A fila fica no PostgreSQL, com reserva atômica (`SELECT ... FOR UPDATE SKIP LOCKED`)
+  e `reserva_token`/lease. Sem Postgres, há um fallback seguro por update condicional.
+- Falhas técnicas têm retry com backoff (limite configurável por tarefa).
+- Pausar o motor (admin → Configuração do motor) cancela tarefas automáticas pendentes
+  e recusa novos disparos. Ativar reabilita.
 
 ## Cache (render-once-and-cache)
 
