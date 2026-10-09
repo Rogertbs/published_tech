@@ -1,22 +1,29 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import PostCard from "../../components/PostCard.astro";
+import ConteudoCard from "../../components/ConteudoCard.astro";
 import EmptyState from "../../components/EmptyState.astro";
+import ErrorState from "../../components/ErrorState.astro";
 import { getSecao } from "../../lib/api";
 
 const { secao } = Astro.params;
 const data = await getSecao(secao);
 if (!data) {
-  return Astro.redirect("/404");
+  Astro.response.status = 404;
 }
 ---
-<BaseLayout title={`Seção: ${secao}`}>
-  <h1 class="mb-4 border-b border-borda pb-2 text-2xl font-extrabold text-principal">{secao}</h1>
-  {data.itens.length === 0 ? (
-    <EmptyState texto="Sem conteúdo publicado nesta seção." />
+<BaseLayout title={data ? `Seção: ${secao}` : "Página não encontrada"}>
+  {!data ? (
+    <ErrorState />
   ) : (
-    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {data.itens.map((item) => <PostCard item={item} />)}
-    </div>
+    <>
+      <h1 class="mb-4 border-b border-borda pb-2 text-2xl font-extrabold text-principal">{secao}</h1>
+      {data.itens.length === 0 ? (
+        <EmptyState texto="Sem conteúdo publicado nesta seção." />
+      ) : (
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {data.itens.map((item) => <ConteudoCard item={item} />)}
+        </div>
+      )}
+    </>
   )}
 </BaseLayout>

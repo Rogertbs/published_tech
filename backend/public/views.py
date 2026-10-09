@@ -16,6 +16,7 @@ def _resumo_item(conteudo: Conteudo) -> dict:
         "tipo": conteudo.tipo,
         "titulo": versao.titulo,
         "resumo": versao.resumo,
+        "itens_count": versao.itens.count() if conteudo.tipo == TipoConteudo.LISTA else 0,
         "publicado_em": conteudo.publicado_em.isoformat() if conteudo.publicado_em else None,
     }
 

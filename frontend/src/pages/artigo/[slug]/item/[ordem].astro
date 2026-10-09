@@ -1,14 +1,15 @@
 ---
 import BaseLayout from "../../../../layouts/BaseLayout.astro";
+import ErrorState from "../../../../components/ErrorState.astro";
 import { getItem } from "../../../../lib/api";
 
 const { slug, ordem } = Astro.params;
 const item = await getItem(slug, Number(ordem));
 if (!item) {
-  return Astro.redirect("/404");
+  Astro.response.status = 404;
 }
-const d = item.dados;
-const nome = d.full_name || d.id || `Item ${item.ordem}`;
+const d = item?.dados ?? {};
+const nome = d.full_name || d.id || `Item ${item?.ordem ?? ordem}`;
 const campos = [
   ["Organização", d.organizacao],
   ["Tarefa", d.tarefa],
@@ -20,30 +21,34 @@ const campos = [
   ["Categoria", d.categoria],
 ];
 ---
-<BaseLayout title={`${nome} — ${item.titulo}`} description={d.description || d.resumo}>
-  <article class="mx-auto max-w-3xl">
-    <p class="text-sm text-texto-sec">
-      <a href={`/artigo/${slug}`} class="font-semibold text-destaque hover:underline">← {item.titulo}</a>
-    </p>
-    <h1 class="mt-2 text-2xl font-extrabold text-principal">{nome}</h1>
-    {item.aviso_curadoria && <p class="mt-1 text-sm text-texto-sec">{item.aviso_curadoria}</p>}
-    {d.description && <p class="mt-4 text-lg text-texto-sec">{d.description}</p>}
+<BaseLayout title={item ? `${nome} — ${item.titulo}` : "Página não encontrada"} description={d.description || d.resumo}>
+  {!item ? (
+    <ErrorState />
+  ) : (
+    <article class="mx-auto max-w-3xl">
+      <p class="text-sm text-texto-sec">
+        <a href={`/artigo/${slug}`} class="font-semibold text-destaque hover:underline">← {item.titulo}</a>
+      </p>
+      <h1 class="mt-2 text-2xl font-extrabold text-principal">{nome}</h1>
+      {item.aviso_curadoria && <p class="mt-1 text-sm text-texto-sec">{item.aviso_curadoria}</p>}
+      {d.description && <p class="mt-4 text-lg text-texto-sec">{d.description}</p>}
 
-    <dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-borda pt-4 text-sm">
-      {campos
-        .filter(([, valor]) => valor !== undefined && valor !== null && valor !== "")
-        .map(([rotulo, valor]) => (
-          <div>
-            <dt class="font-semibold text-texto-sec">{rotulo}</dt>
-            <dd class="text-principal">{valor}</dd>
-          </div>
-        ))}
-    </dl>
+      <dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-borda pt-4 text-sm">
+        {campos
+          .filter(([, valor]) => valor !== undefined && valor !== null && valor !== "")
+          .map(([rotulo, valor]) => (
+            <div>
+              <dt class="font-semibold text-texto-sec">{rotulo}</dt>
+              <dd class="text-principal">{valor}</dd>
+            </div>
+          ))}
+      </dl>
 
-    {(d.html_url || d.url) && (
-      <a href={d.html_url || d.url} rel="noopener" class="mt-6 inline-block font-semibold text-destaque hover:underline">
-        Ver original ↗
-      </a>
-    )}
-  </article>
+      {(d.html_url || d.url) && (
+        <a href={d.html_url || d.url} rel="noopener" class="mt-6 inline-block font-semibold text-destaque hover:underline">
+          Ver original ↗
+        </a>
+      )}
+    </article>
+  )}
 </BaseLayout>

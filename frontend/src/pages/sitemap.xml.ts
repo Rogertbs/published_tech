@@ -7,7 +7,9 @@ export const GET: APIRoute = async ({ url }) => {
   try {
     const resp = await fetch(`${api}/api/publico/home`);
     if (resp.ok) home = await resp.json();
-  } catch {}
+  } catch {
+    console.warn("Sitemap: falha ao consultar a API pública.");
+  }
 
   const todas = [...home.artigos, ...home.destaques_github, ...home.radar_hf];
   const caminhos = [
@@ -16,7 +18,10 @@ export const GET: APIRoute = async ({ url }) => {
     "/secao/destaques-github",
     "/secao/radar-hf",
     "/sobre",
-    ...todas.map((item) => `/artigo/${item.slug}`),
+    ...todas.flatMap((item) => [
+      `/artigo/${item.slug}`,
+      ...Array.from({ length: item.itens_count || 0 }, (_, i) => `/artigo/${item.slug}/item/${i + 1}`),
+    ]),
   ];
   const corpo = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

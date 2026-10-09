@@ -1,0 +1,28 @@
+---
+import { formatDate } from "../lib/api";
+import Kicker from "./Kicker.astro";
+interface Props {
+  item: { slug: string; titulo: string; resumo?: string; publicado_em?: string; secao: string };
+}
+const { item } = Astro.props;
+---
+<article class="overflow-hidden rounded-lg border border-borda bg-card">
+  <a href={`/artigo/${item.slug}`} class="block">
+    <img
+      src="/placeholder.svg"
+      alt="Ilustração gerada por IA (simulada)"
+      width="640"
+      height="360"
+      loading="lazy"
+      class="h-40 w-full object-cover"
+    />
+  </a>
+  <div class="p-4">
+    <Kicker texto={item.secao} />
+    <a href={`/artigo/${item.slug}`} class="mt-1 block">
+      <h3 class="text-lg font-bold leading-snug text-principal hover:text-destaque">{item.titulo}</h3>
+    </a>
+    {item.resumo && <p class="mt-1 text-sm text-texto-sec">{item.resumo}</p>}
+    <p class="mt-2 text-xs text-texto-sec">{formatDate(item.publicado_em)}</p>
+  </div>
+</article>

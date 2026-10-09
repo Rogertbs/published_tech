@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import PostCard from "../components/PostCard.astro";
+import ConteudoCard from "../components/ConteudoCard.astro";
 import Kicker from "../components/Kicker.astro";
 import EmptyState from "../components/EmptyState.astro";
 import { getHome, formatDate } from "../lib/api";
@@ -20,22 +20,33 @@ const vazio = home.artigos.length === 0 && home.destaques_github.length === 0 &&
   ) : (
     <>
       {hero && (
-        <section class="mb-10">
-          <Kicker texto="Destaque" />
-          <a href={`/artigo/${hero.slug}`} class="group">
-            <h1 class="mt-1 text-3xl font-extrabold leading-tight text-principal group-hover:text-destaque sm:text-4xl">
-              {hero.titulo}
-            </h1>
+        <section class="mb-10 grid gap-6 md:grid-cols-2 md:items-center">
+          <a href={`/artigo/${hero.slug}`} class="block overflow-hidden rounded-lg border border-borda">
+            <img
+              src="/placeholder.svg"
+              alt="Ilustração gerada por IA (simulada)"
+              width="640"
+              height="360"
+              class="h-56 w-full object-cover"
+            />
           </a>
-          {hero.resumo && <p class="mt-2 max-w-3xl text-lg text-texto-sec">{hero.resumo}</p>}
-          <p class="mt-1 text-sm text-texto-sec">{formatDate(hero.publicado_em)}</p>
+          <div>
+            <Kicker texto={hero.secao} />
+            <a href={`/artigo/${hero.slug}`} class="group">
+              <h1 class="mt-1 text-3xl font-extrabold leading-tight text-principal group-hover:text-destaque sm:text-4xl">
+                {hero.titulo}
+              </h1>
+            </a>
+            {hero.resumo && <p class="mt-2 text-lg text-texto-sec">{hero.resumo}</p>}
+            <p class="mt-1 text-sm text-texto-sec">{formatDate(hero.publicado_em)}</p>
+          </div>
         </section>
       )}
 
       <section>
         <h2 class="mb-4 border-b border-borda pb-1 text-xl font-bold text-principal">Últimas</h2>
         <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {demais.map((item) => <PostCard item={item} />)}
+          {demais.map((item) => <ConteudoCard item={item} />)}
         </div>
       </section>
 
@@ -48,7 +59,7 @@ const vazio = home.artigos.length === 0 && home.destaques_github.length === 0 &&
             <EmptyState texto="Sem itens por enquanto." />
           ) : (
             <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {bloco.itens.map((item) => <PostCard item={item} />)}
+              {bloco.itens.map((item) => <ConteudoCard item={item} />)}
             </div>
           )}
         </section>

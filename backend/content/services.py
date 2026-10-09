@@ -35,6 +35,7 @@ def _page_cache_keys(conteudo: Conteudo) -> list[str]:
     ]
     for ordem in range(1, 6):
         chaves.append(f"{PAGE_KEY_PREFIX}/artigo/{conteudo.slug}/item/{ordem}")
+    chaves.append(f"{PAGE_KEY_PREFIX}/sitemap.xml")
     return chaves
 
 

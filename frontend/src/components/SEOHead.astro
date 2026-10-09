@@ -2,12 +2,16 @@
 interface Props {
   title: string;
   description?: string;
+  type?: string;
 }
-const { title, description = "Análises de IA, software e infraestrutura." } = Astro.props;
+const { title, description = "Análises de IA, software e infraestrutura.", type = "website" } = Astro.props;
+const base = process.env.PUBLIC_SITE_URL || Astro.url.origin;
+const canonical = `${base}${Astro.url.pathname}`;
 ---
 <title>{title}</title>
 <meta name="description" content={description} />
-<link rel="canonical" href={Astro.url.href} />
+<link rel="canonical" href={canonical} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
-<meta property="og:type" content="website" />
+<meta property="og:type" content={type} />
+<meta property="og:url" content={canonical} />

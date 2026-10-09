@@ -1,10 +1,8 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import ErrorState from "../components/ErrorState.astro";
+Astro.response.status = 404;
 ---
 <BaseLayout title="Página não encontrada">
-  <div class="py-16 text-center">
-    <h1 class="text-4xl font-extrabold text-principal">404</h1>
-    <p class="mt-2 text-texto-sec">Página não encontrada.</p>
-    <a href="/" class="mt-4 inline-block font-semibold text-destaque hover:underline">Voltar ao início</a>
-  </div>
+  <ErrorState />
 </BaseLayout>
