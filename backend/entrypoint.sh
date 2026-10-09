@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Dev-only: Redis runs inside the backend container (3-container dev setup).
-# In production Redis is a separate service.
 if [ "${START_REDIS:-true}" = "true" ]; then
   redis-server --daemonize yes --save "" --appendonly no
 fi

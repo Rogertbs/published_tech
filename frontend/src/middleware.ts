@@ -25,8 +25,6 @@ function pageKey(pathname) {
   return `pt:page:${pathname}`;
 }
 
-// render-once-and-cache: serve the generated HTML from Redis (no TTL) until the
-// backend invalidates the page key on publish/edit/retire (ADR-0003).
 export const onRequest = defineMiddleware(async (context, next) => {
   const { request } = context;
   if (request.method !== "GET") return next();
@@ -41,13 +39,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
       if (cached) {
         return new Response(cached, {
           status: 200,
-          headers: { "content-type": "text/html; charset=utf-8", "x-cache": "HIT" },
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+            "x-cache": "HIT",
+          },
         });
       }
     } catch {}
   }
 
   const response = await next();
+  response.headers.set("cache-control", "no-store");
 
   if (redis && response.status === 200) {
     try {

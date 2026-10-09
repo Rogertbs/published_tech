@@ -56,9 +56,8 @@ class PublicApiTests(TestCase):
 
     def test_cache_serve_sem_reconsultar(self):
         conteudo, versao = self.make_publicado(slug="p1", titulo="Antigo")
-        self.client.get("/api/publico/artigo/p1")  # popula o cache
+        self.client.get("/api/publico/artigo/p1")
 
-        # Muda o título direto no banco, sem passar pelos serviços (sem invalidar).
         versao.titulo = "Novo (não invalidado)"
         versao.save(update_fields=["titulo"])
 
@@ -71,7 +70,8 @@ class PublicApiTests(TestCase):
 
         nova = Versao.objects.create(conteudo=conteudo, titulo="v2", corpo="c2")
         services.aprovar(nova)
-        services.publicar(conteudo, nova)
+        with self.captureOnCommitCallbacks(execute=True):
+            services.publicar(conteudo, nova)
 
         self.assertEqual(self.client.get("/api/publico/artigo/p1").json()["titulo"], "v2")
 
@@ -81,7 +81,8 @@ class PublicApiTests(TestCase):
         self.client.get("/api/publico/artigo/p1")
 
         conteudo = Conteudo.objects.get(slug="p1")
-        services.retirar(conteudo)
+        with self.captureOnCommitCallbacks(execute=True):
+            services.retirar(conteudo)
 
         self.assertEqual(self.client.get("/api/publico/home").json()["artigos"], [])
         self.assertEqual(self.client.get("/api/publico/artigo/p1").status_code, 404)

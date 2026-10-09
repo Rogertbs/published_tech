@@ -26,18 +26,14 @@ class ConteudoAdmin(admin.ModelAdmin):
     def estado_publico(self, obj):
         return obj.esta_publicado
 
-    @admin.action(description="Publicar (última versão aprovada)")
+    @admin.action(description="Publicar (versão em edição aprovada)")
     def publicar_selecionados(self, request, queryset):
         for conteudo in queryset:
-            versao = (
-                conteudo.versao_em_edicao
-                if conteudo.versao_em_edicao and hasattr(conteudo.versao_em_edicao, "aprovacao")
-                else conteudo.versoes.filter(aprovacao__isnull=False).first()
-            )
+            versao = services.versao_publicavel(conteudo)
             if versao is None:
                 self.message_user(
                     request,
-                    f"{conteudo.slug}: nenhuma versão aprovada para publicar.",
+                    f"{conteudo.slug}: aprove a versão em edição antes de publicar.",
                     level=messages.WARNING,
                 )
                 continue

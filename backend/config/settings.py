@@ -48,7 +48,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Database: Postgres when POSTGRES_DB is set, otherwise SQLite (local fallback/tests).
 if os.environ.get("POSTGRES_DB"):
     DATABASES = {
         "default": {
@@ -68,7 +67,6 @@ else:
         }
     }
 
-# Cache: Redis when CACHE_URL is set (render-once-and-cache), else local memory.
 _cache_url = os.environ.get("CACHE_URL")
 if _cache_url:
     CACHES = {
@@ -102,6 +100,4 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Redis location shared with the frontend for page-level cache invalidation.
-# Left unset by default (dev/tests skip it); set in docker-compose for the shared cache.
 REDIS_URL = os.environ.get("REDIS_URL")

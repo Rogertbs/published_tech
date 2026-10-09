@@ -57,3 +57,33 @@ class CicloDeVidaTests(TestCase):
         _, versao = self.make_conteudo()
         aprovacao = services.aprovar(versao, origem=Aprovacao.Origem.HUMANO)
         self.assertEqual(aprovacao.origem, "humano")
+
+    def test_publicar_duas_vezes_nao_duplica(self):
+        conteudo, versao = self.make_conteudo()
+        services.aprovar(versao)
+        services.publicar(conteudo, versao)
+        services.publicar(conteudo, versao)
+
+        self.assertEqual(Publicacao.objects.filter(conteudo=conteudo, retirado_em__isnull=True).count(), 1)
+        self.assertEqual(Publicacao.objects.filter(conteudo=conteudo).count(), 1)
+
+    def test_publicar_nova_versao_retira_a_anterior(self):
+        conteudo, v1 = self.make_conteudo()
+        services.aprovar(v1)
+        services.publicar(conteudo, v1)
+
+        v2 = Versao.objects.create(conteudo=conteudo, titulo="v2", corpo="c2")
+        conteudo.versao_em_edicao = v2
+        conteudo.save(update_fields=["versao_em_edicao"])
+        services.aprovar(v2)
+        services.publicar(conteudo, v2)
+
+        ativas = Publicacao.objects.filter(conteudo=conteudo, retirado_em__isnull=True)
+        self.assertEqual(ativas.count(), 1)
+        self.assertEqual(ativas.first().versao_id, v2.pk)
+
+    def test_versao_publicavel_exige_aprovacao(self):
+        conteudo, versao = self.make_conteudo()
+        self.assertIsNone(services.versao_publicavel(conteudo))
+        services.aprovar(versao)
+        self.assertEqual(services.versao_publicavel(conteudo), versao)
