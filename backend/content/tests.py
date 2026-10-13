@@ -1,4 +1,6 @@
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from auditoria.models import AuditoriaAdministrativa
@@ -191,3 +193,63 @@ class CicloEditorialTests(TestCase):
 
         acoes = set(AuditoriaAdministrativa.objects.values_list("acao", flat=True))
         self.assertTrue({"aprovar", "publicar", "editar", "retirar"}.issubset(acoes))
+
+
+class AdminEditorialTests(TestCase):
+    def setUp(self):
+        usuario = get_user_model().objects.create_superuser("editor", "editor@exemplo.com", "senha")
+        self.client.force_login(usuario)
+
+    def make_conteudo(self, estado=EstadoConteudo.AGUARDANDO_REVISAO):
+        conteudo = Conteudo.objects.create(
+            slug="admin-1", secao=Secao.ARTIGOS, tipo="artigo", estado=estado
+        )
+        versao = Versao.objects.create(conteudo=conteudo, titulo="Título", corpo="Corpo")
+        conteudo.versao_em_edicao = versao
+        conteudo.save(update_fields=["versao_em_edicao"])
+        return conteudo, versao
+
+    def test_index_tem_atalhos(self):
+        resposta = self.client.get("/admin/")
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Atalhos")
+        self.assertContains(resposta, "Revisar pendentes")
+
+    def test_aprovar_e_publicar_pela_pagina(self):
+        conteudo, versao = self.make_conteudo()
+        url = reverse("admin:content_conteudo_aprovar_publicar", args=[conteudo.pk])
+        resposta = self.client.post(url)
+
+        self.assertEqual(resposta.status_code, 302)
+        conteudo.refresh_from_db()
+        self.assertEqual(conteudo.estado, EstadoConteudo.PUBLICADO)
+        self.assertEqual(conteudo.versao_publicada_id, versao.pk)
+
+    def test_retirar_pela_pagina(self):
+        conteudo, versao = self.make_conteudo()
+        services.aprovar(versao)
+        services.publicar(conteudo, versao)
+
+        url = reverse("admin:content_conteudo_retirar", args=[conteudo.pk])
+        resposta = self.client.post(url)
+
+        self.assertEqual(resposta.status_code, 302)
+        conteudo.refresh_from_db()
+        self.assertEqual(conteudo.estado, EstadoConteudo.RETIRADO)
+
+    def test_acao_em_massa_aprovar_e_publicar(self):
+        conteudo, _ = self.make_conteudo()
+        resposta = self.client.post(
+            "/admin/content/conteudo/",
+            {"action": "aprovar_e_publicar", "_selected_action": [str(conteudo.pk)]},
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        conteudo.refresh_from_db()
+        self.assertEqual(conteudo.estado, EstadoConteudo.PUBLICADO)
+
+    def test_filtro_fila_revisao(self):
+        self.make_conteudo()
+        resposta = self.client.get("/admin/content/conteudo/?fila=revisao")
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "admin-1")

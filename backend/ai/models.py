@@ -16,16 +16,22 @@ class OrigemCusto(models.TextChoices):
 
 
 class PrecoModelo(models.Model):
-    provedor = models.CharField(max_length=64)
-    modelo = models.CharField(max_length=200)
-    moeda = models.CharField(max_length=8, default="USD")
-    preco_entrada_por_milhao = models.DecimalField(max_digits=12, decimal_places=6)
-    preco_saida_por_milhao = models.DecimalField(max_digits=12, decimal_places=6)
-    vigente_de = models.DateTimeField()
-    criado_em = models.DateTimeField(auto_now_add=True)
+    provedor = models.CharField(max_length=64, verbose_name="provedor")
+    modelo = models.CharField(max_length=200, verbose_name="modelo")
+    moeda = models.CharField(max_length=8, default="USD", verbose_name="moeda")
+    preco_entrada_por_milhao = models.DecimalField(
+        max_digits=12, decimal_places=6, verbose_name="preço de entrada (por milhão)"
+    )
+    preco_saida_por_milhao = models.DecimalField(
+        max_digits=12, decimal_places=6, verbose_name="preço de saída (por milhão)"
+    )
+    vigente_de = models.DateTimeField(verbose_name="vigente de")
+    criado_em = models.DateTimeField(auto_now_add=True, verbose_name="criado em")
 
     class Meta:
         ordering = ["-vigente_de"]
+        verbose_name = "preço de modelo"
+        verbose_name_plural = "preços de modelo"
         constraints = [
             models.UniqueConstraint(
                 fields=["provedor", "modelo", "vigente_de"], name="uniq_preco_provedor_modelo_vigencia"
@@ -37,42 +43,67 @@ class PrecoModelo(models.Model):
 
 
 class ChamadaIA(models.Model):
-    provedor = models.CharField(max_length=64)
-    modelo = models.CharField(max_length=200)
-    finalidade = models.CharField(max_length=64)
-    etapa = models.CharField(max_length=64, blank=True, default="")
+    provedor = models.CharField(max_length=64, verbose_name="provedor")
+    modelo = models.CharField(max_length=200, verbose_name="modelo")
+    finalidade = models.CharField(max_length=64, verbose_name="finalidade")
+    etapa = models.CharField(max_length=64, blank=True, default="", verbose_name="etapa")
     tarefa = models.ForeignKey(
-        "jobs.Tarefa", null=True, blank=True, on_delete=models.SET_NULL, related_name="chamadas_ia"
+        "jobs.Tarefa",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="chamadas_ia",
+        verbose_name="tarefa",
     )
     execucao = models.ForeignKey(
-        "pipeline.Execucao", null=True, blank=True, on_delete=models.SET_NULL, related_name="chamadas_ia"
+        "pipeline.Execucao",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="chamadas_ia",
+        verbose_name="execução",
     )
-    conteudo_id = models.IntegerField(null=True, blank=True)
-    correlacao = models.JSONField(default=dict, blank=True)
+    conteudo_id = models.IntegerField(null=True, blank=True, verbose_name="conteúdo")
+    correlacao = models.JSONField(default=dict, blank=True, verbose_name="correlação")
 
-    iniciada_em = models.DateTimeField()
-    finalizada_em = models.DateTimeField(null=True, blank=True)
-    duracao_ms = models.IntegerField(null=True, blank=True)
-    status = models.CharField(max_length=16, choices=StatusChamada.choices, db_index=True)
-    tentativa = models.PositiveIntegerField(default=1)
-    request_id_externo = models.CharField(max_length=200, blank=True, default="")
+    iniciada_em = models.DateTimeField(verbose_name="iniciada em")
+    finalizada_em = models.DateTimeField(null=True, blank=True, verbose_name="finalizada em")
+    duracao_ms = models.IntegerField(null=True, blank=True, verbose_name="duração (ms)")
+    status = models.CharField(
+        max_length=16, choices=StatusChamada.choices, db_index=True, verbose_name="status"
+    )
+    tentativa = models.PositiveIntegerField(default=1, verbose_name="tentativa")
+    request_id_externo = models.CharField(
+        max_length=200, blank=True, default="", verbose_name="id externo da requisição"
+    )
 
-    tokens_entrada = models.IntegerField(null=True, blank=True)
-    tokens_saida = models.IntegerField(null=True, blank=True)
-    tokens_cache = models.IntegerField(null=True, blank=True)
-    unidades_imagem = models.IntegerField(null=True, blank=True)
-    resolucao = models.CharField(max_length=32, blank=True, default="")
+    tokens_entrada = models.IntegerField(null=True, blank=True, verbose_name="tokens de entrada")
+    tokens_saida = models.IntegerField(null=True, blank=True, verbose_name="tokens de saída")
+    tokens_cache = models.IntegerField(null=True, blank=True, verbose_name="tokens de cache")
+    unidades_imagem = models.IntegerField(null=True, blank=True, verbose_name="unidades de imagem")
+    resolucao = models.CharField(max_length=32, blank=True, default="", verbose_name="resolução")
 
-    moeda = models.CharField(max_length=8, default="USD")
-    preco_aplicado = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
-    custo = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
-    origem_custo = models.CharField(max_length=16, choices=OrigemCusto.choices, default=OrigemCusto.DESCONHECIDO)
+    moeda = models.CharField(max_length=8, default="USD", verbose_name="moeda")
+    preco_aplicado = models.DecimalField(
+        max_digits=12, decimal_places=6, null=True, blank=True, verbose_name="preço aplicado"
+    )
+    custo = models.DecimalField(
+        max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="custo"
+    )
+    origem_custo = models.CharField(
+        max_length=16,
+        choices=OrigemCusto.choices,
+        default=OrigemCusto.DESCONHECIDO,
+        verbose_name="origem do custo",
+    )
 
-    erro = models.TextField(blank=True, default="")
-    criada_em = models.DateTimeField(auto_now_add=True)
+    erro = models.TextField(blank=True, default="", verbose_name="erro")
+    criada_em = models.DateTimeField(auto_now_add=True, verbose_name="criada em")
 
     class Meta:
         ordering = ["-iniciada_em"]
+        verbose_name = "chamada de IA"
+        verbose_name_plural = "chamadas de IA"
         indexes = [models.Index(fields=["finalidade", "status"])]
 
     def __str__(self):

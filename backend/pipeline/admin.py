@@ -14,6 +14,9 @@ class EtapaInline(admin.TabularInline):
 class ExecucaoAdmin(admin.ModelAdmin):
     list_display = ("id", "tipo", "secao", "estado", "tarefa", "iniciado_em", "finalizado_em")
     list_filter = ("estado", "secao")
+    date_hierarchy = "criado_em"
+    list_select_related = ("tarefa",)
+    list_per_page = 25
     readonly_fields = ("tipo", "secao", "tarefa", "snapshot_config", "iniciado_em", "finalizado_em", "erro", "criado_em")
     inlines = [EtapaInline]
 
@@ -22,6 +25,8 @@ class ExecucaoAdmin(admin.ModelAdmin):
 class EvidenciaAdmin(admin.ModelAdmin):
     list_display = ("id", "execucao", "versao", "tipo", "url", "verificado")
     list_filter = ("tipo", "verificado")
+    list_select_related = ("execucao", "versao", "fonte", "registro")
+    list_per_page = 25
     readonly_fields = ("execucao", "versao", "fonte", "registro", "tipo", "url", "trecho", "verificado", "coletado_em", "criado_em")
 
     def has_add_permission(self, request):

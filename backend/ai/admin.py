@@ -27,6 +27,8 @@ class ChamadaIAAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "provedor", "finalidade", "origem_custo")
     search_fields = ("modelo", "request_id_externo")
+    date_hierarchy = "iniciada_em"
+    list_per_page = 25
     readonly_fields = (
         "provedor",
         "modelo",

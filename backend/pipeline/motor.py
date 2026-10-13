@@ -1,20 +1,24 @@
 from typing import TypedDict
 
+import hashlib
 import re
+from datetime import timedelta
 
 from django.db import IntegrityError, connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from ai import instrumentation
 from ai.models import ChamadaIA
+from auditoria import services as auditoria
 from configuracao import services as configuracao
 from content.models import Conteudo, EstadoConteudo, Item, Secao, TipoConteudo, Versao
 from finance.services import OrcamentoExcedido
 from pipeline.imagens import gerar_ilustracao
 from pipeline.models import EstadoExecucao, EtapaExecucao, Evidencia, Execucao
-from sources.models import Candidato, Fonte, TipoFonte
+from sources.models import Candidato, Fonte, RegistroNormalizado, TipoFonte
 
 SECAO_TIPO = {
     Secao.DESTAQUES_GITHUB: TipoFonte.GITHUB,
@@ -38,6 +42,7 @@ class EstadoPipeline(TypedDict, total=False):
     execucao_id: int
     secao: str
     candidatos: list
+    candidatos_deduplicados: int
     evidencias: list
     afirmacoes: list
     fonte_resumo: str
@@ -67,16 +72,75 @@ def _quantidade(secao: str, campos: dict) -> int:
     return 1
 
 
-def _selecionar_candidatos(secao: str, campos: dict) -> list[Candidato]:
-    qs = (
+def _config_deduplicacao(campos: dict) -> tuple[bool, int | None]:
+    deduplicar = bool(campos.get("deduplicar_itens", True))
+    janela = campos.get("deduplicacao_janela_dias")
+    if janela in (None, ""):
+        return deduplicar, None
+    try:
+        return deduplicar, max(0, int(janela))
+    except (TypeError, ValueError):
+        return deduplicar, None
+
+
+def _selecionar_candidatos(secao: str, campos: dict) -> tuple[list[Candidato], int]:
+    base = (
         Candidato.objects.filter(selecionado=True)
         .select_related("registro", "registro__fonte")
         .order_by("-pontuacao")
     )
     tipo = SECAO_TIPO.get(secao)
     if tipo:
-        qs = qs.filter(registro__fonte__tipo=tipo)
-    return list(qs[: _quantidade(secao, campos)])
+        base = base.filter(registro__fonte__tipo=tipo)
+
+    deduplicar, janela = _config_deduplicacao(campos)
+    if not deduplicar:
+        return list(base[: _quantidade(secao, campos)]), 0
+
+    elegivel = Q(registro__usado_em__isnull=True)
+    if janela is not None:
+        elegivel |= Q(registro__usado_em__lt=timezone.now() - timedelta(days=janela))
+    disponiveis = base.filter(elegivel)
+    selecionados = list(disponiveis[: _quantidade(secao, campos)])
+    deduplicados = base.count() - disponiveis.count()
+    return selecionados, deduplicados
+
+
+def _candidatos_de_origem(candidatos_ids: list) -> list[Candidato]:
+    return list(
+        Candidato.objects.filter(pk__in=candidatos_ids).select_related(
+            "registro", "registro__fonte"
+        )
+    )
+
+
+def _hash_origem(candidatos_ids: list) -> str:
+    chaves = [
+        f"{c.registro.fonte.tipo}:{c.registro.chave_externa}"
+        for c in _candidatos_de_origem(candidatos_ids)
+    ]
+    if not chaves:
+        return ""
+    return hashlib.sha256("\n".join(sorted(chaves)).encode("utf-8")).hexdigest()
+
+
+def _marcar_usados(candidatos_ids: list) -> None:
+    ids = [c.registro_id for c in _candidatos_de_origem(candidatos_ids)]
+    if ids:
+        RegistroNormalizado.objects.filter(pk__in=ids).update(usado_em=timezone.now())
+
+
+def _registrar_deduplicacao(execucao, state, motivo: str) -> None:
+    auditoria.registrar(
+        "deduplicacao",
+        "Execucao",
+        execucao.pk,
+        depois={
+            "secao": state.get("secao"),
+            "motivo": motivo,
+            "candidatos_deduplicados": state.get("candidatos_deduplicados", 0),
+        },
+    )
 
 
 def _resumo_registro(dados: dict) -> str:
@@ -127,8 +191,8 @@ def etapa(nome):
 @etapa("selecionar")
 def no_selecionar(execucao, state):
     campos = _campos_da_execucao(execucao, state["secao"])
-    candidatos = _selecionar_candidatos(state["secao"], campos)
-    return {"candidatos": [c.pk for c in candidatos]}
+    candidatos, deduplicados = _selecionar_candidatos(state["secao"], campos)
+    return {"candidatos": [c.pk for c in candidatos], "candidatos_deduplicados": deduplicados}
 
 
 @etapa("evidencias")
@@ -212,7 +276,22 @@ def no_ilustrar(execucao, state):
 
 @etapa("salvar")
 def no_salvar(execucao, state):
+    candidatos_ids = state.get("candidatos", [])
     revisao = state.get("revisao", {})
+    campos = _campos_da_execucao(execucao, state["secao"])
+    deduplicar, janela = _config_deduplicacao(campos)
+    if not candidatos_ids and state.get("candidatos_deduplicados", 0) > 0:
+        _registrar_deduplicacao(execucao, state, "sem_candidatos_novos")
+        return {"motivo": "conteudo_duplicado"}
+    hash_origem = _hash_origem(candidatos_ids)
+    if deduplicar and hash_origem:
+        recentes = Versao.objects.filter(hash_origem=hash_origem)
+        if janela is not None:
+            recentes = recentes.filter(criado_em__gte=timezone.now() - timedelta(days=janela))
+        if recentes.exists():
+            _registrar_deduplicacao(execucao, state, "conteudo_identico")
+            _marcar_usados(candidatos_ids)
+            return {"motivo": "conteudo_duplicado"}
     aprovado_pela_revisao = bool(revisao.get("ok"))
     tipo = TipoConteudo.LISTA if state["secao"] in SECOES_LISTA else TipoConteudo.ARTIGO
     estado = EstadoConteudo.AGUARDANDO_REVISAO if aprovado_pela_revisao else EstadoConteudo.RASCUNHO
@@ -227,7 +306,8 @@ def no_salvar(execucao, state):
         "evidencias": state.get("evidencias", []),
         "imagem": state.get("imagem", {}),
         "revisao": revisao,
-        "fontes": _urls_fontes(state.get("candidatos", [])),
+        "fontes": _urls_fontes(candidatos_ids),
+        "candidatos_deduplicados": state.get("candidatos_deduplicados", 0),
     }
     if tipo == TipoConteudo.LISTA:
         metadados["aviso_curadoria"] = f"{AVISO_CURADORIA} Coleta em {timezone.now().date().isoformat()}."
@@ -236,16 +316,18 @@ def no_salvar(execucao, state):
         titulo=titulo,
         resumo=resumo,
         corpo=corpo,
+        hash_origem=hash_origem,
         metadados=metadados,
     )
     if tipo == TipoConteudo.LISTA:
-        _criar_itens(versao, state.get("candidatos", []))
+        _criar_itens(versao, candidatos_ids)
     conteudo.versao_em_edicao = versao
     conteudo.save(update_fields=["versao_em_edicao", "atualizado_em"])
     Evidencia.objects.filter(pk__in=state.get("evidencias", [])).update(versao=versao)
     ChamadaIA.objects.filter(execucao=execucao, conteudo_id__isnull=True).update(
         conteudo_id=conteudo.pk
     )
+    _marcar_usados(candidatos_ids)
     return {
         "conteudo_id": conteudo.pk,
         "versao_id": versao.pk,

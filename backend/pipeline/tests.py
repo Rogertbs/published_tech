@@ -1,5 +1,7 @@
 from unittest import mock
 
+from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
 
@@ -260,3 +262,95 @@ class CuradoriaTests(TestCase):
         motor.executar_pipeline(secao="destaques-github")
         conteudo = Conteudo.objects.get()
         self.assertEqual(ChamadaIA.objects.get().conteudo_id, conteudo.pk)
+
+
+def seed_rss(registros):
+    fonte = Fonte.objects.create(nome="RSS", tipo=TipoFonte.RSS, parametros={"selecao": 1})
+    for item in registros:
+        registro = RegistroNormalizado.objects.create(
+            fonte=fonte,
+            chave_externa=item["url"],
+            dados=item,
+            coletado_em=timezone.now(),
+        )
+        Candidato.objects.create(
+            registro=registro, pontuacao=item.get("pontuacao", 0), selecionado=True
+        )
+    return fonte
+
+
+class DeduplicacaoTests(TestCase):
+    def test_nao_duplica_mesma_origem(self):
+        seed_github([dados("1", "org/a", estrelas=500)])
+
+        primeira = motor.executar_pipeline(secao="destaques-github")
+        self.assertEqual(Conteudo.objects.count(), 1)
+        self.assertIsNotNone(RegistroNormalizado.objects.get().usado_em)
+
+        segunda = motor.executar_pipeline(secao="destaques-github")
+        self.assertEqual(primeira.estado, EstadoExecucao.CONCLUIDA)
+        self.assertEqual(Conteudo.objects.count(), 1)
+        self.assertIn("conteudo_duplicado", segunda.motivo)
+
+    def test_origem_nova_gera_conteudo_novo(self):
+        seed_rss(
+            [
+                {"url": "https://exemplo.com/a", "full_name": "A", "resumo": "a", "pontuacao": 10},
+                {"url": "https://exemplo.com/b", "full_name": "B", "resumo": "b", "pontuacao": 5},
+            ]
+        )
+
+        motor.executar_pipeline(secao="noticias")
+        motor.executar_pipeline(secao="noticias")
+
+        self.assertEqual(Conteudo.objects.count(), 2)
+        usados = set(RegistroNormalizado.objects.values_list("chave_externa", flat=True))
+        self.assertEqual(usados, {"https://exemplo.com/a", "https://exemplo.com/b"})
+
+    def test_marca_origem_como_usada(self):
+        seed_github([dados("1", "org/a", estrelas=500)])
+        motor.executar_pipeline(secao="destaques-github")
+        self.assertTrue(RegistroNormalizado.objects.get().usado_em)
+
+    def test_deduplicacao_desligada_permite_reprocessar(self):
+        seed_github([dados("1", "org/a", estrelas=500)])
+        geral = Configuracao.objects.create(chave="geral", escopo=EscopoConfig.GERAL)
+        cfg.criar_versao(geral, {"deduplicar_itens": False}, ativar=True)
+
+        motor.executar_pipeline(secao="destaques-github")
+        motor.executar_pipeline(secao="destaques-github")
+
+        self.assertEqual(Conteudo.objects.count(), 2)
+
+    def test_janela_deduplicacao_permite_reuso(self):
+        seed_github([dados("1", "org/a", estrelas=500)])
+        geral = Configuracao.objects.create(chave="geral", escopo=EscopoConfig.GERAL)
+        cfg.criar_versao(geral, {"deduplicacao_janela_dias": 1}, ativar=True)
+
+        motor.executar_pipeline(secao="destaques-github")
+        antigo = timezone.now() - timedelta(days=3)
+        RegistroNormalizado.objects.update(usado_em=antigo)
+        Versao.objects.update(criado_em=antigo)
+
+        motor.executar_pipeline(secao="destaques-github")
+
+        self.assertEqual(Conteudo.objects.count(), 2)
+
+    def test_janela_zero_permite_reuso_imediato(self):
+        seed_github([dados("1", "org/a", estrelas=500)])
+        geral = Configuracao.objects.create(chave="geral", escopo=EscopoConfig.GERAL)
+        cfg.criar_versao(geral, {"deduplicacao_janela_dias": 0}, ativar=True)
+
+        motor.executar_pipeline(secao="destaques-github")
+        motor.executar_pipeline(secao="destaques-github")
+
+        self.assertEqual(Conteudo.objects.count(), 2)
+
+    def test_deduplicacao_registra_auditoria(self):
+        from auditoria.models import AuditoriaAdministrativa
+
+        seed_github([dados("1", "org/a", estrelas=500)])
+        motor.executar_pipeline(secao="destaques-github")
+        motor.executar_pipeline(secao="destaques-github")
+
+        self.assertTrue(AuditoriaAdministrativa.objects.filter(acao="deduplicacao").exists())

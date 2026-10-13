@@ -1,0 +1,102 @@
+:root {
+  --primary: #0f172a;
+  --secondary: #2563eb;
+  --accent: #14b8a6;
+  --primary-fg: #ffffff;
+  --body-fg: #1e293b;
+  --body-bg: #f8fafc;
+  --body-quiet-color: #64748b;
+  --body-medium-color: #475569;
+  --body-loud-color: #0f172a;
+  --header-color: #e2e8f0;
+  --header-branding-color: #ffffff;
+  --header-bg: #0f172a;
+  --header-link-color: #ffffff;
+  --breadcrumbs-fg: #cbd5e1;
+  --breadcrumbs-link-fg: #ffffff;
+  --breadcrumbs-bg: #1e293b;
+  --link-fg: #2563eb;
+  --link-hover-color: #1d4ed8;
+  --link-selected-fg: #0f172a;
+  --hairline-color: #e2e8f0;
+  --border-color: #cbd5e1;
+  --darkened-bg: #f1f5f9;
+  --selected-bg: #e2e8f0;
+  --selected-row: #dbeafe;
+  --button-bg: #2563eb;
+  --button-hover-bg: #1d4ed8;
+  --default-button-bg: #14b8a6;
+  --default-button-hover-bg: #0d9488;
+  --object-tools-bg: #475569;
+  --object-tools-hover-bg: #0f172a;
+}
+
+html[data-theme="dark"] {
+  --primary: #0f172a;
+  --secondary: #2563eb;
+  --accent: #14b8a6;
+  --body-fg: #e2e8f0;
+  --body-bg: #0b1220;
+  --body-quiet-color: #94a3b8;
+  --body-medium-color: #cbd5e1;
+  --body-loud-color: #f8fafc;
+  --header-bg: #0f172a;
+  --breadcrumbs-bg: #1e293b;
+  --hairline-color: #1e293b;
+  --border-color: #334155;
+  --darkened-bg: #111c2e;
+  --selected-bg: #1e293b;
+  --selected-row: #1e3a5f;
+}
+
+#header {
+  background: var(--header-bg);
+  color: var(--header-link-color);
+}
+
+.pt-atalhos {
+  margin-bottom: 24px;
+}
+
+.pt-atalhos h2 {
+  margin-bottom: 12px;
+}
+
+.pt-atalhos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.pt-atalho {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline-color);
+  border-radius: 8px;
+  background: var(--body-bg);
+  color: var(--body-fg);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pt-atalho:hover,
+.pt-atalho:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.25);
+}
+
+.submit-row.pt-acoes-editoriais {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.submit-row.pt-acoes-editoriais form {
+  margin: 0;
+}
+
+.submit-row.pt-acoes-editoriais .button {
+  padding: 10px 16px;
+}

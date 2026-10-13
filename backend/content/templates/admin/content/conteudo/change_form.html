@@ -1,0 +1,22 @@
+{% extends "admin/change_form.html" %}
+
+{% block submit_buttons_bottom %}
+  {{ block.super }}
+  {% if original %}
+    <div class="submit-row pt-acoes-editoriais">
+      <form method="post" action="{% url 'admin:content_conteudo_aprovar_publicar' original.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="button default">Aprovar e publicar</button>
+      </form>
+      <form method="post" action="{% url 'admin:content_conteudo_publicar' original.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="button">Publicar versão aprovada</button>
+      </form>
+      <form method="post" action="{% url 'admin:content_conteudo_retirar' original.pk %}"
+            onsubmit="return confirm('Retirar este conteúdo do público?');">
+        {% csrf_token %}
+        <button type="submit" class="button">Retirar do público</button>
+      </form>
+    </div>
+  {% endif %}
+{% endblock %}

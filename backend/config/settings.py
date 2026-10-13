@@ -9,7 +9,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in {"1", "true", "yes"}
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "config.apps.PublishedAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -42,7 +42,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -105,6 +105,7 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},

@@ -15,6 +15,7 @@ class FonteAdmin(admin.ModelAdmin):
     list_display = ("nome", "tipo", "habilitada", "credencial_ref", "atualizado_em")
     list_filter = ("tipo", "habilitada")
     search_fields = ("nome",)
+    list_per_page = 25
     actions = ["habilitar", "desabilitar", "coletar_agora", "produzir_noticia", "produzir_curadoria"]
 
     def _enfileirar(self, request, tipo, parametros):
@@ -65,14 +66,35 @@ class FonteAdmin(admin.ModelAdmin):
 class ColetaAdmin(admin.ModelAdmin):
     list_display = ("id", "fonte", "estado", "iniciada_em", "finalizada_em", "total_registros")
     list_filter = ("estado", "fonte__tipo")
+    date_hierarchy = "iniciada_em"
+    list_select_related = ("fonte",)
+    list_per_page = 25
     readonly_fields = ("fonte", "estado", "iniciada_em", "finalizada_em", "total_registros", "erro")
+
+
+class UsadoFilter(admin.SimpleListFilter):
+    title = "uso em conteúdo"
+    parameter_name = "uso"
+
+    def lookups(self, request, model_admin):
+        return (("usado", "Já usado"), ("novo", "Não usado"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "usado":
+            return queryset.filter(usado_em__isnull=False)
+        if self.value() == "novo":
+            return queryset.filter(usado_em__isnull=True)
+        return queryset
 
 
 @admin.register(RegistroNormalizado)
 class RegistroNormalizadoAdmin(admin.ModelAdmin):
-    list_display = ("chave_externa", "fonte", "coletado_em")
-    list_filter = ("fonte",)
+    list_display = ("chave_externa", "fonte", "coletado_em", "usado_em")
+    list_filter = ("fonte", UsadoFilter)
     search_fields = ("chave_externa",)
+    date_hierarchy = "coletado_em"
+    list_select_related = ("fonte",)
+    list_per_page = 25
     readonly_fields = ("fonte", "coleta", "chave_externa", "dados", "coletado_em")
 
 
@@ -80,4 +102,6 @@ class RegistroNormalizadoAdmin(admin.ModelAdmin):
 class CandidatoAdmin(admin.ModelAdmin):
     list_display = ("registro", "pontuacao", "selecionado", "criado_em")
     list_filter = ("selecionado",)
+    list_select_related = ("registro", "registro__fonte")
+    list_per_page = 25
     readonly_fields = ("registro", "pontuacao", "motivo", "criado_em")

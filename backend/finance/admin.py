@@ -15,6 +15,8 @@ class ConfiguracaoOrcamentoAdmin(admin.ModelAdmin):
 class ReservaOrcamentoAdmin(admin.ModelAdmin):
     list_display = ("id", "provedor", "modelo", "valor_estimado", "estado", "criada_em", "conciliada_em")
     list_filter = ("estado", "provedor")
+    date_hierarchy = "criada_em"
+    list_per_page = 25
     readonly_fields = ("provedor", "modelo", "valor_estimado", "moeda", "estado", "chamada", "criada_em", "expira_em", "conciliada_em")
 
     def has_add_permission(self, request):
@@ -25,6 +27,8 @@ class ReservaOrcamentoAdmin(admin.ModelAdmin):
 class EventoOrcamentoAdmin(admin.ModelAdmin):
     list_display = ("id", "tipo", "limite_atingido", "valor_solicitado", "gasto_dia", "gasto_mes", "criado_em")
     list_filter = ("tipo", "limite_atingido")
+    date_hierarchy = "criado_em"
+    list_per_page = 25
     readonly_fields = ("tipo", "limite_atingido", "valor_solicitado", "gasto_dia", "gasto_mes", "detalhe", "criado_em")
 
     def has_add_permission(self, request):

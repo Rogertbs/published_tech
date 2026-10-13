@@ -25,6 +25,8 @@ class TarefaAdmin(admin.ModelAdmin):
     )
     list_filter = ("estado", "origem", "tipo_tarefa")
     search_fields = ("tipo_tarefa", "chave_idempotencia")
+    date_hierarchy = "criado_em"
+    list_per_page = 25
     readonly_fields = (
         "reserva_token",
         "lease_expira_em",
