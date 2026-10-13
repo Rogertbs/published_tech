@@ -4,6 +4,7 @@ from django.db import models
 class TipoFonte(models.TextChoices):
     GITHUB = "github", "GitHub"
     HUGGINGFACE = "huggingface", "Hugging Face"
+    RSS = "rss", "RSS (notícias)"
 
 
 class CategoriaModelo(models.TextChoices):

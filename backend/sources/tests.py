@@ -15,6 +15,7 @@ from sources.models import (
     RegistroNormalizado,
     TipoFonte,
 )
+from tests.factories import FEED, get_feed
 
 
 def item(repo_id, full_name, estrelas, pushed="2026-10-08T00:00:00Z"):
@@ -68,6 +69,7 @@ class ColetaTests(TestCase):
         self.assertEqual(RegistroNormalizado.objects.filter(fonte=fonte).count(), 1)
 
     def test_fonte_desabilitada_nao_coleta_e_preserva_historico(self):
+        Fonte.objects.all().delete()
         fonte = self.fonte()
         services.coletar(fonte, http_get=get_ok([item(1, "a/b", 100)]), sleep=lambda s: None)
         fonte.habilitada = False
@@ -86,6 +88,7 @@ class ColetaTests(TestCase):
         self.assertEqual(RegistroNormalizado.objects.count(), 0)
 
     def test_todas_falharem_estado_falhou(self):
+        Fonte.objects.all().delete()
         self.fonte(nome="A", parametros={"min_estrelas": 1})
         self.fonte(nome="B", parametros={"min_estrelas": 2})
 
@@ -135,6 +138,7 @@ class ColetaTests(TestCase):
         self.assertEqual(coleta.estado, EstadoColeta.FALHOU)
 
     def test_falha_de_uma_fonte_nao_derruba_outra(self):
+        Fonte.objects.all().delete()
         boa = self.fonte(nome="Boa", parametros={"min_estrelas": 1})
         ruim = self.fonte(nome="Ruim", parametros={"min_estrelas": 999})
 
@@ -289,3 +293,33 @@ class HuggingFaceTests(TestCase):
             {"limite": 30}, None, http_get=get_lista(models), sleep=lambda s: None
         )[0]["dados"]
         self.assertTrue(dados["acesso_restrito"])
+
+
+class RSSTests(TestCase):
+    def fonte(self):
+        return Fonte.objects.create(
+            nome="Exemplo",
+            tipo=TipoFonte.RSS,
+            parametros={"feed_url": "https://exemplo.com/feed", "nome_fonte": "Exemplo", "selecao": 1},
+        )
+
+    def test_conector_normaliza(self):
+        registros = services.obter_conector(self.fonte()).listar(
+            {"feed_url": "https://exemplo.com/feed"}, None, http_get=get_feed(), sleep=lambda s: None
+        )
+        self.assertEqual(len(registros), 2)
+        self.assertEqual(registros[0]["chave_externa"], "https://exemplo.com/a")
+        self.assertEqual(registros[0]["dados"]["full_name"], "Notícia A")
+        self.assertEqual(registros[0]["dados"]["resumo"], "Resumo A")
+
+    def test_coleta_rss(self):
+        fonte = self.fonte()
+        coleta = services.coletar(fonte, http_get=get_feed(), sleep=lambda s: None)
+        self.assertEqual(coleta.estado, EstadoColeta.OK)
+        self.assertEqual(RegistroNormalizado.objects.filter(fonte=fonte).count(), 2)
+
+    def test_selecao_por_recencia(self):
+        fonte = self.fonte()
+        coleta = services.coletar(fonte, http_get=get_feed(), sleep=lambda s: None)
+        candidatos = services.selecionar_candidatos(coleta, limite=1)
+        self.assertEqual(candidatos[0].registro.dados["full_name"], "Notícia A")

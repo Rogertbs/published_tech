@@ -9,7 +9,9 @@ from configuracao.models import Configuracao, EscopoConfig
 from content.models import Conteudo, EstadoConteudo, Versao
 from pipeline import motor
 from pipeline.models import EstadoExecucao, EtapaExecucao, Evidencia, Execucao
+from pipeline.services import SemFonteRSS, produzir_noticia
 from sources.models import Candidato, Fonte, RegistroNormalizado, TipoFonte
+from tests.factories import get_feed
 
 
 def dados(id_, full_name, licenca="MIT", descricao="desc", estrelas=100):
@@ -148,6 +150,40 @@ class PipelineTests(TestCase):
 
         self.assertIsNotNone(get_handler("pipeline"))
         self.assertIsNotNone(get_handler("coletar"))
+
+
+class NoticiaTests(TestCase):
+    def test_produzir_noticia_gera_rascunho(self):
+        fonte = Fonte.objects.create(
+            nome="RSS",
+            tipo=TipoFonte.RSS,
+            parametros={"feed_url": "https://exemplo.com/feed", "selecao": 1},
+        )
+        resultado = produzir_noticia(fonte=fonte, http_get=get_feed(), sleep=lambda s: None)
+
+        self.assertEqual(resultado["coleta"], "ok")
+        self.assertEqual(resultado["estado_conteudo"], "aguardando_revisao")
+        conteudo = Conteudo.objects.get(slug=resultado["conteudo"])
+        self.assertEqual(conteudo.secao, "noticias")
+        self.assertEqual(conteudo.tipo, "artigo")
+        self.assertEqual(conteudo.versao_em_edicao.itens.get().tipo, "noticia")
+        self.assertTrue(resultado["texto"])
+
+    def test_endpoint_noticias(self):
+        with mock.patch(
+            "pipeline.views.pipeline_services.produzir_noticia",
+            return_value={"conteudo": "noticias-1", "coleta": "ok"},
+        ):
+            resposta = self.client.post("/api/noticias", "{}", content_type="application/json")
+        self.assertEqual(resposta.status_code, 201)
+
+    def test_endpoint_sem_fonte(self):
+        with mock.patch(
+            "pipeline.views.pipeline_services.produzir_noticia",
+            side_effect=SemFonteRSS("Nenhuma fonte RSS habilitada."),
+        ):
+            resposta = self.client.post("/api/noticias", "{}", content_type="application/json")
+        self.assertEqual(resposta.status_code, 400)
 
     def test_itens_estruturados_e_aviso(self):
         seed_github([dados("1", "org/a", estrelas=500), dados("2", "org/b", estrelas=100)])

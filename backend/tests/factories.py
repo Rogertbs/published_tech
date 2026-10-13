@@ -17,3 +17,20 @@ def repo(id_, name, stars):
         "licenca": "MIT",
         "stargazers_count": stars,
     }
+
+
+FEED = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Exemplo</title>
+<item><title>Notícia A</title><link>https://exemplo.com/a</link>
+<description>Resumo A</description><pubDate>Mon, 13 Oct 2026 10:00:00 +0000</pubDate></item>
+<item><title>Notícia B</title><link>https://exemplo.com/b</link>
+<description>Resumo B</description><pubDate>Sun, 12 Oct 2026 10:00:00 +0000</pubDate></item>
+</channel></rss>"""
+
+
+def get_feed(body=FEED):
+    def _get(url, headers):
+        return 200, {}, body
+
+    return _get
+

@@ -90,7 +90,24 @@ curl localhost:8010/api/execucoes/1
 - Se `INTERNAL_API_TOKEN` estiver definido, `POST/GET /api/execucoes` exige o header
   `X-Internal-Token`.
 
-## Fontes e coleta (GitHub e Hugging Face)
+## Fontes e coleta (GitHub, Hugging Face e RSS)
+
+Fontes de notícias via **RSS** já vêm cadastradas por migração (TechCrunch, Ars Technica,
+The Register, InfoQ), com `feed_url` em `parametros`. São instâncias configuráveis como as
+demais (ativar/desativar/editar/excluir no admin).
+
+### Produzir uma notícia única (validação dos agentes)
+
+```bash
+curl -X POST localhost:8010/api/noticias \
+  -H 'content-type: application/json' \
+  -d '{"chave_idempotencia":"demo-1"}'
+```
+
+Coleta o feed (primeira fonte RSS habilitada, ou `fonte_id` no corpo), seleciona 1 item e
+roda o pipeline editorial (`secao=noticias`), devolvendo o **rascunho pendente de
+aprovação** (`estado_conteudo: aguardando_revisao`, `texto`, `versao`). Depois aprove e
+publique no admin. É síncrono — serve para validar que os agentes estão trabalhando.
 
 Fontes são instâncias configuráveis no admin (`Fonte`): tipo, nome, credencial por
 **referência** (nome de uma variável de ambiente, ex.: `GITHUB_TOKEN`), parâmetros e

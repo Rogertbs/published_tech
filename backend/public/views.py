@@ -87,7 +87,7 @@ def home(request):
     def build():
         lista = [_resumo_item(c) for c in _publicados().order_by("-publicado_em")]
         return {
-            "artigos": [i for i in lista if i["secao"] == Secao.ARTIGOS],
+            "artigos": [i for i in lista if i["secao"] in (Secao.ARTIGOS, Secao.NOTICIAS)],
             "destaques_github": [i for i in lista if i["secao"] == Secao.DESTAQUES_GITHUB],
             "radar_hf": [i for i in lista if i["secao"] == Secao.RADAR_HF],
         }

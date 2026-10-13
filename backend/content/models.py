@@ -4,6 +4,7 @@ from django.db import models
 
 class Secao(models.TextChoices):
     ARTIGOS = "artigos", "Artigos"
+    NOTICIAS = "noticias", "Notícias"
     DESTAQUES_GITHUB = "destaques-github", "Destaques GitHub"
     RADAR_HF = "radar-hf", "Radar Hugging Face"
 
@@ -82,6 +83,7 @@ class Item(models.Model):
     class TipoItem(models.TextChoices):
         REPOSITORIO = "repositorio", "Repositório"
         MODELO = "modelo", "Modelo"
+        NOTICIA = "noticia", "Notícia"
 
     versao = models.ForeignKey(Versao, on_delete=models.CASCADE, related_name="itens")
     ordem = models.PositiveIntegerField()

@@ -17,6 +17,13 @@ from sources.models import Candidato, Fonte, TipoFonte
 SECAO_TIPO = {
     Secao.DESTAQUES_GITHUB: TipoFonte.GITHUB,
     Secao.RADAR_HF: TipoFonte.HUGGINGFACE,
+    Secao.NOTICIAS: TipoFonte.RSS,
+}
+SECOES_LISTA = {Secao.DESTAQUES_GITHUB, Secao.RADAR_HF}
+TIPO_ITEM = {
+    TipoFonte.GITHUB: Item.TipoItem.REPOSITORIO,
+    TipoFonte.HUGGINGFACE: Item.TipoItem.MODELO,
+    TipoFonte.RSS: Item.TipoItem.NOTICIA,
 }
 AVISO_CURADORIA = "Curadoria própria — não é ranking oficial de terceiros."
 PROMPT_PADRAO = "Redija uma análise curta em português, prática, com base apenas nas evidências."
@@ -186,7 +193,7 @@ def no_ilustrar(execucao, state):
 def no_salvar(execucao, state):
     revisao = state.get("revisao", {})
     aprovado_pela_revisao = bool(revisao.get("ok"))
-    tipo = TipoConteudo.LISTA if state["secao"] in SECAO_TIPO else TipoConteudo.ARTIGO
+    tipo = TipoConteudo.LISTA if state["secao"] in SECOES_LISTA else TipoConteudo.ARTIGO
     estado = EstadoConteudo.AGUARDANDO_REVISAO if aprovado_pela_revisao else EstadoConteudo.RASCUNHO
     afirmacoes = state.get("afirmacoes", [])
     titulo = afirmacoes[0]["texto"].split(":")[0] if afirmacoes else state["secao"]
@@ -232,11 +239,7 @@ def _criar_itens(versao: Versao, candidatos_ids: list) -> None:
         candidato = candidatos.get(candidato_id)
         if candidato is None:
             continue
-        tipo_item = (
-            Item.TipoItem.REPOSITORIO
-            if candidato.registro.fonte.tipo == TipoFonte.GITHUB
-            else Item.TipoItem.MODELO
-        )
+        tipo_item = TIPO_ITEM.get(candidato.registro.fonte.tipo, Item.TipoItem.REPOSITORIO)
         Item.objects.create(
             versao=versao, ordem=ordem, tipo=tipo_item, dados=candidato.registro.dados
         )

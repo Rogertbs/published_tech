@@ -7,6 +7,7 @@ from django.utils import timezone
 from sources.connectors.base import ConectorError, RateLimitPersistente, urllib_get
 from sources.connectors.github import GitHubConector
 from sources.connectors.huggingface import HuggingFaceConector
+from sources.connectors.rss import RSSConector
 from sources.models import (
     Candidato,
     Coleta,
@@ -19,6 +20,7 @@ from sources.models import (
 CONECTORES = {
     TipoFonte.GITHUB: GitHubConector(),
     TipoFonte.HUGGINGFACE: HuggingFaceConector(),
+    TipoFonte.RSS: RSSConector(),
 }
 
 
@@ -106,7 +108,24 @@ def _dias_desde(valor) -> int | None:
     return (timezone.now() - momento).days
 
 
+def _epoch(valor) -> float:
+    if not valor:
+        return 0.0
+    from email.utils import parsedate_to_datetime
+
+    try:
+        return parsedate_to_datetime(valor).timestamp()
+    except (TypeError, ValueError):
+        pass
+    try:
+        return datetime.fromisoformat(str(valor).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
 def _pontuacao(dados: dict, fonte: Fonte) -> float:
+    if fonte.tipo == TipoFonte.RSS:
+        return _epoch(dados.get("publicado_em"))
     if fonte.tipo == TipoFonte.HUGGINGFACE:
         trending = float(dados.get("trendingScore") or 0)
         metadados = dados.get("metadados") or {}
@@ -122,6 +141,11 @@ def _pontuacao(dados: dict, fonte: Fonte) -> float:
 
 
 def _motivo(dados: dict, fonte: Fonte) -> str:
+    if fonte.tipo == TipoFonte.RSS:
+        return (
+            f"curadoria de notícias (fonte: {dados.get('fonte') or fonte.nome}): "
+            f"publicado_em={dados.get('publicado_em')}, url={dados.get('url')}"
+        )
     if fonte.tipo == TipoFonte.HUGGINGFACE:
         metadados = dados.get("metadados") or {}
         return (

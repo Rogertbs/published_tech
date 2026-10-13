@@ -87,6 +87,7 @@ class RascunhoIsoladoTests(TestCase):
 
 class FonteIndisponivelTests(TestCase):
     def test_falha_de_uma_fonte_marca_parcial(self):
+        Fonte.objects.all().delete()
         Fonte.objects.create(nome="Boa", tipo=TipoFonte.GITHUB, parametros={"min_estrelas": 1})
         Fonte.objects.create(nome="Ruim", tipo=TipoFonte.GITHUB, parametros={"min_estrelas": 999})
 
