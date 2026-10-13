@@ -25,7 +25,10 @@ TIPO_ITEM = {
     TipoFonte.HUGGINGFACE: Item.TipoItem.MODELO,
 }
 AVISO_CURADORIA = "Curadoria própria — não é ranking oficial de terceiros."
-PROMPT_PADRAO = "Redija uma análise curta em português, prática, com base apenas nas evidências."
+PROMPT_PADRAO = (
+    "Escreva em português do Brasil. Se as evidências estiverem em outro idioma, "
+    "traduza-as. Redija uma análise curta e prática, com base apenas nas evidências."
+)
 
 
 class EstadoPipeline(TypedDict, total=False):

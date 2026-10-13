@@ -169,6 +169,7 @@ class NoticiaTests(TestCase):
         self.assertEqual(conteudo.tipo, "artigo")
         self.assertTrue(conteudo.versao_em_edicao.metadados["fontes"])
         self.assertTrue(resultado["texto"])
+        self.assertIn("português do Brasil", resultado["texto"])
 
     def test_endpoint_noticias_enfileira_e_e_idempotente(self):
         from jobs.models import Tarefa
