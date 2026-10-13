@@ -205,3 +205,15 @@ def retirar(conteudo: Conteudo, quando=None) -> None:
 
     auditoria.registrar("retirar", "Conteudo", conteudo.pk)
     transaction.on_commit(lambda: invalidar_publico(conteudo))
+
+
+@transaction.atomic
+def rejeitar(conteudo: Conteudo, usuario=None) -> Conteudo:
+    conteudo = _lock_conteudo(conteudo)
+    if conteudo.esta_publicado:
+        raise ValueError("Retire do público antes de rejeitar.")
+    conteudo.estado = EstadoConteudo.REJEITADO
+    conteudo.save(update_fields=["estado", "atualizado_em"])
+    auditoria.registrar("rejeitar", "Conteudo", conteudo.pk, usuario=usuario)
+    transaction.on_commit(lambda: invalidar_publico(conteudo))
+    return conteudo

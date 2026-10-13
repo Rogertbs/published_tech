@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.urls import path, reverse
 
@@ -38,11 +39,38 @@ class ConteudoAdmin(admin.ModelAdmin):
     list_select_related = ("versao_publicada", "versao_em_edicao")
     list_per_page = 25
     inlines = [VersaoInline]
-    actions = ["aprovar_e_publicar", "publicar_selecionados", "retirar_selecionados"]
+    readonly_fields = (
+        "estado",
+        "versao_publicada",
+        "versao_em_edicao",
+        "publicado_em",
+        "criado_em",
+        "atualizado_em",
+    )
+    actions = [
+        "aprovar_e_publicar",
+        "publicar_selecionados",
+        "retirar_selecionados",
+        "rejeitar_selecionados",
+    ]
 
     @admin.display(boolean=True, description="Publicado")
     def estado_publico(self, obj):
         return obj.esta_publicado
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        transaction.on_commit(lambda: services.invalidar_publico(obj))
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        transaction.on_commit(lambda: services.invalidar_publico(obj))
+
+    def delete_queryset(self, request, queryset):
+        conteudos = list(queryset)
+        super().delete_queryset(request, queryset)
+        for conteudo in conteudos:
+            transaction.on_commit(lambda c=conteudo: services.invalidar_publico(c))
 
     def get_urls(self):
         custom = [
@@ -148,6 +176,15 @@ class ConteudoAdmin(admin.ModelAdmin):
         for conteudo in queryset:
             services.retirar(conteudo)
         self.message_user(request, "Conteúdo(s) retirado(s).")
+
+    @admin.action(description="Rejeitar (rascunhos e aguardando revisão)")
+    def rejeitar_selecionados(self, request, queryset):
+        alvos = queryset.filter(
+            estado__in=[EstadoConteudo.RASCUNHO, EstadoConteudo.AGUARDANDO_REVISAO]
+        )
+        for conteudo in alvos:
+            services.rejeitar(conteudo, usuario=request.user)
+        self.message_user(request, "Conteúdo(s) rejeitado(s).")
 
 
 @admin.register(Versao)

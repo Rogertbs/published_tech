@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -253,3 +254,38 @@ class AdminEditorialTests(TestCase):
         resposta = self.client.get("/admin/content/conteudo/?fila=revisao")
         self.assertEqual(resposta.status_code, 200)
         self.assertContains(resposta, "admin-1")
+
+
+class PublicadoFilterTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def _com_ponteiro(self, slug, estado):
+        conteudo = Conteudo.objects.create(slug=slug, secao=Secao.ARTIGOS, tipo="artigo")
+        versao = Versao.objects.create(conteudo=conteudo, titulo="T", corpo="c")
+        conteudo.versao_publicada = versao
+        conteudo.publicado_em = timezone.now()
+        conteudo.estado = estado
+        conteudo.save()
+        return conteudo
+
+    def test_rejeitado_com_ponteiro_nao_aparece(self):
+        self._com_ponteiro("rej", EstadoConteudo.REJEITADO)
+        self.assertEqual(self.client.get("/api/publico/home").json()["artigos"], [])
+        self.assertEqual(self.client.get("/api/publico/artigo/rej").status_code, 404)
+
+    def test_publicado_sem_publicacao_ativa_nao_aparece(self):
+        self._com_ponteiro("orf", EstadoConteudo.PUBLICADO)
+        self.assertEqual(self.client.get("/api/publico/home").json()["artigos"], [])
+
+    def test_publicado_com_publicacao_ativa_aparece(self):
+        conteudo = Conteudo.objects.create(slug="ok", secao=Secao.ARTIGOS, tipo="artigo")
+        versao = Versao.objects.create(conteudo=conteudo, titulo="T", corpo="c")
+        conteudo.versao_em_edicao = versao
+        conteudo.save(update_fields=["versao_em_edicao"])
+        services.aprovar(versao)
+        services.publicar(conteudo, versao)
+
+        self.assertEqual(
+            [i["slug"] for i in self.client.get("/api/publico/home").json()["artigos"]], ["ok"]
+        )

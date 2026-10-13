@@ -1,10 +1,11 @@
 import time
 
 from django.core.cache import cache
+from django.db.models import Exists, OuterRef
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 
-from content.models import Conteudo, Secao, TipoConteudo
+from content.models import Conteudo, EstadoConteudo, Publicacao, Secao, TipoConteudo
 from content.services import HOME_KEY, artigo_key, item_key, secao_key
 
 
@@ -36,7 +37,16 @@ def _item_completo(conteudo: Conteudo) -> dict:
 
 
 def _publicados():
-    return Conteudo.objects.filter(versao_publicada__isnull=False).select_related("versao_publicada")
+    ativas = Publicacao.objects.filter(conteudo=OuterRef("pk"), retirado_em__isnull=True)
+    return (
+        Conteudo.objects.annotate(tem_publicacao=Exists(ativas))
+        .filter(
+            tem_publicacao=True,
+            estado__in=[EstadoConteudo.PUBLICADO, EstadoConteudo.PUBLICADO_EM_EDICAO],
+            versao_publicada__isnull=False,
+        )
+        .select_related("versao_publicada")
+    )
 
 
 def _cached(key: str, builder):
