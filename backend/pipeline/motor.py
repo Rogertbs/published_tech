@@ -1,5 +1,7 @@
 from typing import TypedDict
 
+import re
+
 from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 from langgraph.checkpoint.memory import InMemorySaver
@@ -93,6 +95,10 @@ def _extrair_titulo(texto: str) -> tuple[str, str]:
             restante = "\n".join(linhas[:indice] + linhas[indice + 1 :]).strip()
             return titulo, restante
     return "", texto
+
+
+def _sem_markdown(texto: str) -> str:
+    return re.sub(r"[*_`#>]+", "", texto).strip()
 
 
 def etapa(nome):
@@ -213,7 +219,7 @@ def no_salvar(execucao, state):
     afirmacoes = state.get("afirmacoes", [])
     titulo_gerado, corpo = _extrair_titulo(state.get("texto", ""))
     titulo = titulo_gerado or (afirmacoes[0]["texto"].split(":")[0] if afirmacoes else state["secao"])
-    resumo = corpo.strip()[:300] or state.get("fonte_resumo", "")[:500]
+    resumo = _sem_markdown(corpo)[:300] or state.get("fonte_resumo", "")[:500]
     conteudo = Conteudo.objects.create(
         slug=f"{state['secao']}-{execucao.pk}", secao=state["secao"], tipo=tipo, estado=estado
     )

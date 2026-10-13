@@ -5,6 +5,8 @@ import ItemCard from "../../components/ItemCard.astro";
 import TransparencyBanner from "../../components/TransparencyBanner.astro";
 import ErrorState from "../../components/ErrorState.astro";
 import { getArtigo, formatDate } from "../../lib/api";
+import { marked } from "marked";
+import sanitizeHtml from "sanitize-html";
 
 const { slug } = Astro.params;
 const artigo = await getArtigo(slug);
@@ -12,6 +14,7 @@ if (!artigo) {
   Astro.response.status = 404;
 }
 const ehLista = artigo?.tipo === "lista";
+const corpoHtml = artigo ? sanitizeHtml(marked.parse(artigo.corpo || "")) : "";
 ---
 <BaseLayout title={artigo ? artigo.titulo : "Página não encontrada"} description={artigo?.resumo}>
   {!artigo ? (
@@ -22,7 +25,7 @@ const ehLista = artigo?.tipo === "lista";
       <h1 class="mt-1 text-3xl font-extrabold leading-tight text-principal sm:text-4xl">{artigo.titulo}</h1>
       <p class="mt-2 text-sm text-texto-sec">{formatDate(artigo.publicado_em)}</p>
       {artigo.resumo && <p class="mt-4 text-lg text-texto-sec">{artigo.resumo}</p>}
-      <div class="mt-6 whitespace-pre-line font-serif text-lg leading-8 text-principal">{artigo.corpo}</div>
+      <div class="conteudo mt-6 font-serif text-lg leading-8 text-principal" set:html={corpoHtml} />
 
       {artigo.fontes?.length > 0 && (
         <section class="mt-8">
