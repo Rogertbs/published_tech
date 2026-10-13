@@ -39,3 +39,10 @@ checagem para não repetir o mesmo conteúdo, **permitindo conteúdo relacionado
 
 - Relaciona-se à spec 4.1.1 (detectar mudanças relevantes sem repetir), 6 (idempotência) e ao
   requisito de não duplicar efeitos (RN-04/RN-26).
+
+## Comments
+
+- Implementado em `eed9d1c`. Dedup por origem: `RegistroNormalizado.usado_em` + `Versao.hash_origem`;
+  a seleção exclui itens já usados (janela `deduplicacao_janela_dias`, `0` = reuso imediato;
+  desligar com `deduplicar_itens=false`); guarda de duplicidade por hash de origem; evento de
+  auditoria `deduplicacao`. Testes em `pipeline/tests.py`.

@@ -49,3 +49,11 @@ padrão é ruim**. Continua sendo **Django Admin** (DEC-18); painel próprio seg
 
 - Alinhado à spec 7.1 (personalização mínima do admin) e 7.2 (telas).
 - Não troca a stack; a troca por painel próprio é EVO-02.
+
+## Comments
+
+- Implementado em `eed9d1c`. Nomes em PT (apps/modelos/campos); agrupamento por área
+  (Editorial, Fontes, Motor e fila, Custos, Configuração, Observabilidade) com modelos técnicos
+  ocultos do menu; botões Aprovar e publicar / Publicar versão aprovada / Retirar na página do
+  conteúdo; filtro "fila de revisão"; ação em massa "Aprovar e publicar"; dashboard com atalhos;
+  CSS próprio (`backend/static/admin/css/painel.css`).
