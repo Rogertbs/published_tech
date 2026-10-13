@@ -83,7 +83,6 @@ class Item(models.Model):
     class TipoItem(models.TextChoices):
         REPOSITORIO = "repositorio", "Repositório"
         MODELO = "modelo", "Modelo"
-        NOTICIA = "noticia", "Notícia"
 
     versao = models.ForeignKey(Versao, on_delete=models.CASCADE, related_name="itens")
     ordem = models.PositiveIntegerField()

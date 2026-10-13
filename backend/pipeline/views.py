@@ -1,12 +1,10 @@
 import json
 
-from django.core.cache import cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from config.api import autorizado, json_response
-from pipeline import services as pipeline_services
-from sources.models import Fonte
+from jobs import services as jobs
 
 
 @csrf_exempt
@@ -19,18 +17,17 @@ def noticias(request):
     except json.JSONDecodeError:
         return json_response({"detail": "JSON inválido."}, status=400)
 
-    chave = body.get("chave_idempotencia")
-    if chave and not cache.add(f"noticia:{chave}", 1, timeout=300):
-        return json_response({"detail": "Já existe uma produção em andamento para esta chave."}, status=409)
-
-    fonte = None
+    parametros = {}
     if body.get("fonte_id"):
-        fonte = Fonte.objects.filter(pk=body["fonte_id"]).first()
+        parametros["fonte_id"] = body["fonte_id"]
 
     try:
-        resultado = pipeline_services.produzir_noticia(fonte=fonte)
-    except pipeline_services.SemFonteRSS as exc:
-        return json_response({"detail": str(exc)}, status=400)
+        tarefa, created = jobs.executar_agora(
+            "noticia", parametros, body.get("chave_idempotencia")
+        )
+    except jobs.MotorPausado:
+        return json_response({"detail": "Motor pausado: não é possível executar."}, status=409)
 
-    status = 201 if resultado.get("conteudo") else 502
-    return json_response(resultado, status=status)
+    return json_response(
+        {"criada": created, **tarefa.as_dict()}, status=202 if created else 200
+    )

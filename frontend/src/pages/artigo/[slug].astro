@@ -24,6 +24,17 @@ const ehLista = artigo?.tipo === "lista";
       {artigo.resumo && <p class="mt-4 text-lg text-texto-sec">{artigo.resumo}</p>}
       <div class="mt-6 whitespace-pre-line font-serif text-lg leading-8 text-principal">{artigo.corpo}</div>
 
+      {artigo.fontes?.length > 0 && (
+        <section class="mt-8">
+          <h2 class="mb-2 text-sm font-bold uppercase tracking-wide text-texto-sec">Fontes</h2>
+          <ul class="list-inside list-disc text-sm text-destaque">
+            {artigo.fontes.map((url) => (
+              <li><a href={url} rel="noopener" class="hover:underline">{url}</a></li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {ehLista && artigo.aviso_curadoria && (
         <p class="mt-6 rounded-md border border-complementar/40 bg-complementar/10 px-4 py-3 text-sm text-texto-sec">
           {artigo.aviso_curadoria}

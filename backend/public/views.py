@@ -25,6 +25,7 @@ def _item_completo(conteudo: Conteudo) -> dict:
     data = _resumo_item(conteudo)
     versao = conteudo.versao_publicada
     data["corpo"] = versao.corpo
+    data["fontes"] = versao.metadados.get("fontes", [])
     if conteudo.tipo == TipoConteudo.LISTA:
         data["aviso_curadoria"] = versao.metadados.get("aviso_curadoria", "")
         data["itens"] = [

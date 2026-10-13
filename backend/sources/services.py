@@ -143,7 +143,7 @@ def _pontuacao(dados: dict, fonte: Fonte) -> float:
 def _motivo(dados: dict, fonte: Fonte) -> str:
     if fonte.tipo == TipoFonte.RSS:
         return (
-            f"curadoria de notícias (fonte: {dados.get('fonte') or fonte.nome}): "
+            f"notícia (fonte: {dados.get('fonte') or fonte.nome}): "
             f"publicado_em={dados.get('publicado_em')}, url={dados.get('url')}"
         )
     if fonte.tipo == TipoFonte.HUGGINGFACE:

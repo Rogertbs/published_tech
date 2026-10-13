@@ -37,7 +37,6 @@ class RSSConector(Conector):
                         "full_name": entry.get("title", ""),
                         "titulo": entry.get("title", ""),
                         "url": link,
-                        "html_url": link,
                         "resumo": entry.get("summary") or entry.get("description") or "",
                         "publicado_em": entry.get("published") or entry.get("updated") or "",
                         "fonte": nome_fonte,

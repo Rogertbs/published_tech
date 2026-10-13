@@ -9,7 +9,7 @@ from configuracao.models import Configuracao, EscopoConfig
 from content.models import Conteudo, EstadoConteudo, Versao
 from pipeline import motor
 from pipeline.models import EstadoExecucao, EtapaExecucao, Evidencia, Execucao
-from pipeline.services import SemFonteRSS, produzir_noticia
+from pipeline.services import produzir_noticia
 from sources.models import Candidato, Fonte, RegistroNormalizado, TipoFonte
 from tests.factories import get_feed
 
@@ -150,6 +150,7 @@ class PipelineTests(TestCase):
 
         self.assertIsNotNone(get_handler("pipeline"))
         self.assertIsNotNone(get_handler("coletar"))
+        self.assertIsNotNone(get_handler("noticia"))
 
 
 class NoticiaTests(TestCase):
@@ -166,24 +167,27 @@ class NoticiaTests(TestCase):
         conteudo = Conteudo.objects.get(slug=resultado["conteudo"])
         self.assertEqual(conteudo.secao, "noticias")
         self.assertEqual(conteudo.tipo, "artigo")
-        self.assertEqual(conteudo.versao_em_edicao.itens.get().tipo, "noticia")
+        self.assertTrue(conteudo.versao_em_edicao.metadados["fontes"])
         self.assertTrue(resultado["texto"])
 
-    def test_endpoint_noticias(self):
-        with mock.patch(
-            "pipeline.views.pipeline_services.produzir_noticia",
-            return_value={"conteudo": "noticias-1", "coleta": "ok"},
-        ):
-            resposta = self.client.post("/api/noticias", "{}", content_type="application/json")
-        self.assertEqual(resposta.status_code, 201)
+    def test_endpoint_noticias_enfileira_e_e_idempotente(self):
+        from jobs.models import Tarefa
 
-    def test_endpoint_sem_fonte(self):
-        with mock.patch(
-            "pipeline.views.pipeline_services.produzir_noticia",
-            side_effect=SemFonteRSS("Nenhuma fonte RSS habilitada."),
-        ):
-            resposta = self.client.post("/api/noticias", "{}", content_type="application/json")
-        self.assertEqual(resposta.status_code, 400)
+        payload = '{"chave_idempotencia": "k1"}'
+        primeira = self.client.post("/api/noticias", payload, content_type="application/json")
+        self.assertEqual(primeira.status_code, 202)
+        self.assertTrue(Tarefa.objects.filter(tipo_tarefa="noticia", chave_idempotencia="k1").exists())
+
+        segunda = self.client.post("/api/noticias", payload, content_type="application/json")
+        self.assertEqual(segunda.status_code, 200)
+        self.assertEqual(Tarefa.objects.filter(tipo_tarefa="noticia").count(), 1)
+
+    def test_endpoint_noticias_pausado(self):
+        from jobs import services as jobs
+
+        jobs.pausar()
+        resposta = self.client.post("/api/noticias", "{}", content_type="application/json")
+        self.assertEqual(resposta.status_code, 409)
 
     def test_itens_estruturados_e_aviso(self):
         seed_github([dados("1", "org/a", estrelas=500), dados("2", "org/b", estrelas=100)])

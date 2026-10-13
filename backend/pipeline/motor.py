@@ -23,7 +23,6 @@ SECOES_LISTA = {Secao.DESTAQUES_GITHUB, Secao.RADAR_HF}
 TIPO_ITEM = {
     TipoFonte.GITHUB: Item.TipoItem.REPOSITORIO,
     TipoFonte.HUGGINGFACE: Item.TipoItem.MODELO,
-    TipoFonte.RSS: Item.TipoItem.NOTICIA,
 }
 AVISO_CURADORIA = "Curadoria própria — não é ranking oficial de terceiros."
 PROMPT_PADRAO = "Redija uma análise curta em português, prática, com base apenas nas evidências."
@@ -204,6 +203,7 @@ def no_salvar(execucao, state):
         "evidencias": state.get("evidencias", []),
         "imagem": state.get("imagem", {}),
         "revisao": revisao,
+        "fontes": _urls_fontes(state.get("candidatos", [])),
     }
     if tipo == TipoConteudo.LISTA:
         metadados["aviso_curadoria"] = f"{AVISO_CURADORIA} Coleta em {timezone.now().date().isoformat()}."
@@ -214,7 +214,8 @@ def no_salvar(execucao, state):
         corpo=state.get("texto", ""),
         metadados=metadados,
     )
-    _criar_itens(versao, state.get("candidatos", []))
+    if tipo == TipoConteudo.LISTA:
+        _criar_itens(versao, state.get("candidatos", []))
     conteudo.versao_em_edicao = versao
     conteudo.save(update_fields=["versao_em_edicao", "atualizado_em"])
     Evidencia.objects.filter(pk__in=state.get("evidencias", [])).update(versao=versao)
@@ -226,6 +227,16 @@ def no_salvar(execucao, state):
         "versao_id": versao.pk,
         "motivo": "; ".join(revisao.get("motivos", [])),
     }
+
+
+def _urls_fontes(candidatos_ids: list) -> list:
+    urls = []
+    for candidato in Candidato.objects.filter(pk__in=candidatos_ids).select_related("registro"):
+        dados = candidato.registro.dados
+        url = dados.get("html_url") or dados.get("url")
+        if url:
+            urls.append(url)
+    return urls
 
 
 def _criar_itens(versao: Versao, candidatos_ids: list) -> None:
