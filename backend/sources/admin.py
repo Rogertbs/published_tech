@@ -1,7 +1,13 @@
 from django.contrib import admin, messages
 
+from jobs import services as jobs
 from sources import services
-from sources.models import Candidato, Coleta, Fonte, RegistroNormalizado
+from sources.models import Candidato, Coleta, Fonte, RegistroNormalizado, TipoFonte
+
+SECAO_POR_TIPO = {
+    TipoFonte.GITHUB: "destaques-github",
+    TipoFonte.HUGGINGFACE: "radar-hf",
+}
 
 
 @admin.register(Fonte)
@@ -9,7 +15,17 @@ class FonteAdmin(admin.ModelAdmin):
     list_display = ("nome", "tipo", "habilitada", "credencial_ref", "atualizado_em")
     list_filter = ("tipo", "habilitada")
     search_fields = ("nome",)
-    actions = ["habilitar", "desabilitar", "coletar_agora"]
+    actions = ["habilitar", "desabilitar", "coletar_agora", "produzir_noticia", "produzir_curadoria"]
+
+    def _enfileirar(self, request, tipo, parametros):
+        try:
+            tarefa, _ = jobs.executar_agora(tipo, parametros)
+        except jobs.MotorPausado:
+            self.message_user(request, "Motor pausado: não é possível executar.", level=messages.ERROR)
+            return
+        self.message_user(
+            request, f"{tipo}: tarefa #{tarefa.pk} enfileirada (rascunho pendente de aprovação)."
+        )
 
     @admin.action(description="Habilitar fontes")
     def habilitar(self, request, queryset):
@@ -30,6 +46,18 @@ class FonteAdmin(admin.ModelAdmin):
         if desabilitadas:
             self.message_user(
                 request, f"{desabilitadas} fonte(s) desabilitada(s) foram ignoradas.", level=messages.WARNING
+            )
+
+    @admin.action(description="Produzir notícia (fontes RSS)")
+    def produzir_noticia(self, request, queryset):
+        for fonte in queryset.filter(tipo=TipoFonte.RSS):
+            self._enfileirar(request, "noticia", {"fonte_id": fonte.pk})
+
+    @admin.action(description="Produzir curadoria (GitHub/Hugging Face)")
+    def produzir_curadoria(self, request, queryset):
+        for fonte in queryset.filter(tipo__in=SECAO_POR_TIPO):
+            self._enfileirar(
+                request, "curadoria", {"secao": SECAO_POR_TIPO[fonte.tipo], "fonte_id": fonte.pk}
             )
 
 
