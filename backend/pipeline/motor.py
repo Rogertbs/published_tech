@@ -27,7 +27,8 @@ TIPO_ITEM = {
 AVISO_CURADORIA = "Curadoria própria — não é ranking oficial de terceiros."
 PROMPT_PADRAO = (
     "Escreva em português do Brasil. Se as evidências estiverem em outro idioma, "
-    "traduza-as. Redija uma análise curta e prática, com base apenas nas evidências."
+    "traduza-as. Comece com uma linha no formato 'TÍTULO: <título curto em português>' "
+    "e depois redija uma análise curta e prática, com base apenas nas evidências."
 )
 
 
@@ -80,6 +81,18 @@ def _resumo_registro(dados: dict) -> str:
     nome = dados.get("full_name") or dados.get("id") or ""
     descricao = dados.get("description") or dados.get("resumo") or ""
     return f"{nome}: {descricao}".strip()
+
+
+def _extrair_titulo(texto: str) -> tuple[str, str]:
+    linhas = texto.splitlines()
+    for indice, linha in enumerate(linhas[:5]):
+        limpa = linha.strip().strip("*# ").strip()
+        maiuscula = limpa.upper()
+        if maiuscula.startswith("TÍTULO:") or maiuscula.startswith("TITULO:"):
+            titulo = limpa.split(":", 1)[1].strip()
+            restante = "\n".join(linhas[:indice] + linhas[indice + 1 :]).strip()
+            return titulo, restante
+    return "", texto
 
 
 def etapa(nome):
@@ -198,7 +211,9 @@ def no_salvar(execucao, state):
     tipo = TipoConteudo.LISTA if state["secao"] in SECOES_LISTA else TipoConteudo.ARTIGO
     estado = EstadoConteudo.AGUARDANDO_REVISAO if aprovado_pela_revisao else EstadoConteudo.RASCUNHO
     afirmacoes = state.get("afirmacoes", [])
-    titulo = afirmacoes[0]["texto"].split(":")[0] if afirmacoes else state["secao"]
+    titulo_gerado, corpo = _extrair_titulo(state.get("texto", ""))
+    titulo = titulo_gerado or (afirmacoes[0]["texto"].split(":")[0] if afirmacoes else state["secao"])
+    resumo = corpo.strip()[:300] or state.get("fonte_resumo", "")[:500]
     conteudo = Conteudo.objects.create(
         slug=f"{state['secao']}-{execucao.pk}", secao=state["secao"], tipo=tipo, estado=estado
     )
@@ -213,8 +228,8 @@ def no_salvar(execucao, state):
     versao = Versao.objects.create(
         conteudo=conteudo,
         titulo=titulo,
-        resumo=state.get("fonte_resumo", "")[:500],
-        corpo=state.get("texto", ""),
+        resumo=resumo,
+        corpo=corpo,
         metadados=metadados,
     )
     if tipo == TipoConteudo.LISTA:

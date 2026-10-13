@@ -29,7 +29,7 @@ const ehLista = artigo?.tipo === "lista";
           <h2 class="mb-2 text-sm font-bold uppercase tracking-wide text-texto-sec">Fontes</h2>
           <ul class="list-inside list-disc text-sm text-destaque">
             {artigo.fontes.map((url) => (
-              <li><a href={url} rel="noopener" class="hover:underline">{url}</a></li>
+              <li><a href={url} target="_blank" rel="noopener" class="hover:underline">{url}</a></li>
             ))}
           </ul>
         </section>
