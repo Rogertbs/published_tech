@@ -4,7 +4,8 @@ Portal editorial (PT-BR) sobre IA, software e infraestrutura. Motor de geração
 assistida por IA com **publicação aprovada por humano**. Especificação em
 `docs/especificacao-published-tech.md`; tickets em `.scratch/mvp/issues/`.
 
-Este repositório contém o **ticket 01 — esqueleto de ponta a ponta** e o **ticket 02 — fila, worker e agendador**.
+Este repositório contém o **MVP completo** (tickets 01–12, em `.scratch/mvp/issues/`).
+Itens pós-MVP estão em `.scratch/pos-mvp/issues/` (backlog, ainda não implementados).
 
 ## Estrutura
 
@@ -102,12 +103,17 @@ demais (ativar/desativar/editar/excluir no admin).
 curl -X POST localhost:8010/api/noticias \
   -H 'content-type: application/json' \
   -d '{"chave_idempotencia":"demo-1"}'
+# → 202 {"criada": true, "id": 1, "tipo": "noticia", "estado": "pendente"}
+
+curl localhost:8010/api/execucoes/1
+# → estado "concluida"; resultado: {conteudo, estado_conteudo: "aguardando_revisao", texto, versao}
 ```
 
-Coleta o feed (primeira fonte RSS habilitada, ou `fonte_id` no corpo), seleciona 1 item e
-roda o pipeline editorial (`secao=noticias`), devolvendo o **rascunho pendente de
-aprovação** (`estado_conteudo: aguardando_revisao`, `texto`, `versao`). Depois aprove e
-publique no admin. É síncrono — serve para validar que os agentes estão trabalhando.
+Enfileira uma tarefa `noticia` (idempotente por `chave_idempotencia`) que coleta o feed
+(primeira fonte RSS habilitada, ou `fonte_id` no corpo), seleciona 1 item e roda o
+pipeline editorial (`secao=noticias`), produzindo o **rascunho pendente de aprovação**.
+É **assíncrono** (worker do container `backend`); acompanhe por `GET /api/execucoes/<id>`
+e depois aprove/publique no admin.
 
 Fontes são instâncias configuráveis no admin (`Fonte`): tipo, nome, credencial por
 **referência** (nome de uma variável de ambiente, ex.: `GITHUB_TOKEN`), parâmetros e
@@ -126,8 +132,9 @@ ativo/inativo. Desabilitar interrompe novas coletas sem apagar o histórico.
   verificado, **não** marca lançamento confirmado nem usa a data de criação como prova
   de lançamento; campos ausentes ficam `Desconhecido`.
 - Registros são deduplicados por `(fonte, chave_externa)`.
-- `selecionar_candidatos` ordena por pontuação (estrelas) e limita a seleção
-  (`parametros.selecao`, padrão 5), registrando o `Candidato` e o motivo.
+- `selecionar_candidatos` ordena por pontuação **por tipo de fonte** (GitHub: estrelas +
+  forks + recência; Hugging Face: trendingScore/downloads/likes; RSS: recência) e limita a
+  seleção (`parametros.selecao`, ou `quantidade_itens` na config; teto 5).
 
 Parâmetros úteis de `Fonte.parametros`: `janela_dias`, `min_estrelas`, `limite`,
 `language`, `topic`, `selecao`.
@@ -192,7 +199,7 @@ explícitas: `selecionar` → `evidencias` → `redigir` → `revisar` → `ilus
 - Cada etapa é **idempotente e persistida** (`EtapaExecucao`): retomar a mesma `Execucao`
   não repete etapas concluídas nem gasta IA de novo.
 - **Evidências** (`Evidencia`) são vinculadas à versão; a **revisão** retém o conteúdo
-  com motivos (`sem_afirmacoes`, `afirmacao_sem_evidencia`, `contradicao_factual`) sem
+  com motivos (`evidencia_insuficiente`, `geracao_falhou`, `contradicao_factual`) sem
   ciclos de reescrita.
 - Rascunho vai para `aguardando_revisao` quando a revisão passa; caso contrário fica em
   `rascunho` com os motivos.
