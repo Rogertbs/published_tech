@@ -354,3 +354,26 @@ class DeduplicacaoTests(TestCase):
         motor.executar_pipeline(secao="destaques-github")
 
         self.assertTrue(AuditoriaAdministrativa.objects.filter(acao="deduplicacao").exists())
+
+
+class BackfillDedupTests(TestCase):
+    def test_preenche_hash_e_marca_origem(self):
+        from django.core.management import call_command
+
+        fonte = Fonte.objects.create(nome="RSS", tipo=TipoFonte.RSS, parametros={"selecao": 1})
+        registro = RegistroNormalizado.objects.create(
+            fonte=fonte,
+            chave_externa="https://exemplo.com/a",
+            dados={},
+            coletado_em=timezone.now(),
+        )
+        conteudo = Conteudo.objects.create(slug="legado", secao="noticias", tipo="artigo")
+        versao = Versao.objects.create(conteudo=conteudo, titulo="T", corpo="c")
+        Evidencia.objects.create(versao=versao, registro=registro, fonte=fonte, tipo="rss")
+
+        call_command("backfill_dedup")
+
+        versao.refresh_from_db()
+        registro.refresh_from_db()
+        self.assertTrue(versao.hash_origem)
+        self.assertIsNotNone(registro.usado_em)
