@@ -93,9 +93,24 @@ curl localhost:8010/api/execucoes/1
 
 ## Fontes e coleta (GitHub, Hugging Face e RSS)
 
-Fontes de notícias via **RSS** já vêm cadastradas por migração (TechCrunch, Ars Technica,
-The Register, InfoQ), com `feed_url` em `parametros`. São instâncias configuráveis como as
-demais (ativar/desativar/editar/excluir no admin).
+Fontes já vêm cadastradas por migração: **GitHub** e **Hugging Face** (padrão) e as de
+notícias via **RSS** (TechCrunch, Ars Technica, The Register, InfoQ), com `feed_url` em
+`parametros`. São instâncias configuráveis como as demais (ativar/desativar/editar/excluir
+no admin). As fontes GitHub/HF usam `credencial_ref` = `GITHUB_TOKEN`/`HF_TOKEN` (env
+opcional, eleva o limite de taxa; sem token funcionam anonimamente).
+
+### Produzir uma curadoria única
+
+```bash
+curl -X POST localhost:8010/api/curadorias \
+  -H 'content-type: application/json' \
+  -d '{"secao":"radar-hf","chave_idempotencia":"cur-1"}'
+# secao: destaques-github | radar-hf
+```
+
+Enfileira a tarefa `curadoria` (idempotente), coleta a fonte do tipo correspondente,
+seleciona os itens e roda o pipeline, deixando o **rascunho pendente de aprovação**.
+Acompanhe por `GET /api/execucoes/<id>`.
 
 ### Produzir uma notícia única (validação dos agentes)
 

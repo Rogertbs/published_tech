@@ -9,9 +9,9 @@ from configuracao.models import Configuracao, EscopoConfig
 from content.models import Conteudo, EstadoConteudo, Versao
 from pipeline import motor
 from pipeline.models import EstadoExecucao, EtapaExecucao, Evidencia, Execucao
-from pipeline.services import produzir_noticia
+from pipeline.services import produzir_curadoria, produzir_noticia
 from sources.models import Candidato, Fonte, RegistroNormalizado, TipoFonte
-from tests.factories import get_feed
+from tests.factories import get_feed, gh_get, repo
 
 
 def dados(id_, full_name, licenca="MIT", descricao="desc", estrelas=100):
@@ -151,6 +151,7 @@ class PipelineTests(TestCase):
         self.assertIsNotNone(get_handler("pipeline"))
         self.assertIsNotNone(get_handler("coletar"))
         self.assertIsNotNone(get_handler("noticia"))
+        self.assertIsNotNone(get_handler("curadoria"))
 
 
 class NoticiaTests(TestCase):
@@ -189,6 +190,38 @@ class NoticiaTests(TestCase):
         jobs.pausar()
         resposta = self.client.post("/api/noticias", "{}", content_type="application/json")
         self.assertEqual(resposta.status_code, 409)
+
+
+class CuradoriaTests(TestCase):
+    def test_produzir_curadoria(self):
+        fonte = Fonte.objects.create(nome="GH", tipo=TipoFonte.GITHUB, parametros={"selecao": 2})
+        resultado = produzir_curadoria(
+            "destaques-github",
+            fonte=fonte,
+            http_get=gh_get([repo(1, "org/a", 100), repo(2, "org/b", 50)]),
+            sleep=lambda s: None,
+        )
+        self.assertEqual(resultado["coleta"], "ok")
+        self.assertEqual(resultado["itens"], 2)
+        conteudo = Conteudo.objects.get(slug=resultado["conteudo"])
+        self.assertEqual(conteudo.secao, "destaques-github")
+
+    def test_endpoint_curadorias_enfileira(self):
+        from jobs.models import Tarefa
+
+        resposta = self.client.post(
+            "/api/curadorias",
+            '{"secao": "radar-hf", "chave_idempotencia": "c1"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resposta.status_code, 202)
+        self.assertTrue(Tarefa.objects.filter(tipo_tarefa="curadoria", chave_idempotencia="c1").exists())
+
+    def test_endpoint_curadorias_secao_invalida(self):
+        resposta = self.client.post(
+            "/api/curadorias", '{"secao": "x"}', content_type="application/json"
+        )
+        self.assertEqual(resposta.status_code, 400)
 
     def test_itens_estruturados_e_aviso(self):
         seed_github([dados("1", "org/a", estrelas=500), dados("2", "org/b", estrelas=100)])
