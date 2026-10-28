@@ -100,3 +100,28 @@ html[data-theme="dark"] {
 .submit-row.pt-acoes-editoriais .button {
   padding: 10px 16px;
 }
+
+.pt-atalhos-ajuda {
+  margin: -4px 16px 12px;
+  color: var(--body-quiet-color);
+  font-size: 13px;
+}
+
+.pt-nav-global {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-left: 24px;
+}
+
+.pt-nav-global a {
+  color: var(--header-link-color);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pt-nav-global a:hover,
+.pt-nav-global a:focus {
+  text-decoration: underline;
+}

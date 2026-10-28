@@ -210,11 +210,12 @@ class AdminEditorialTests(TestCase):
         conteudo.save(update_fields=["versao_em_edicao"])
         return conteudo, versao
 
-    def test_index_tem_atalhos(self):
+    def test_index_tem_menu_de_producao(self):
         resposta = self.client.get("/admin/")
         self.assertEqual(resposta.status_code, 200)
-        self.assertContains(resposta, "Atalhos")
-        self.assertContains(resposta, "Revisar pendentes")
+        self.assertContains(resposta, "Produção de notícias")
+        self.assertContains(resposta, "Gerar notícia (RSS)")
+        self.assertContains(resposta, "Revisar e aprovar")
 
     def test_aprovar_e_publicar_pela_pagina(self):
         conteudo, versao = self.make_conteudo()
