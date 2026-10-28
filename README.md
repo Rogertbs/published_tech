@@ -24,6 +24,14 @@ docker compose up --build
 - Site: http://localhost:4321
 - Admin: http://localhost:8010/admin (usuário/senha do `.env`)
 
+## Produção de notícias (admin)
+
+Em `/admin/producao/` (link **Produção** no topo do admin) você escolhe a fonte RSS,
+gera a notícia, acompanha a execução, revisa o rascunho e aprova/publica ou rejeita na
+mesma tela. O custo de IA e as etapas continuam visíveis em **Motor e fila** e
+**Custos**. Curadorias GitHub/HF geradas pelo admin também aparecem na fila de revisão,
+com os itens listados antes da publicação.
+
 ## Rodar localmente (sem Docker)
 
 Backend (usa SQLite por padrão; Postgres se `POSTGRES_DB` estiver setado):
@@ -247,6 +255,10 @@ explícitas: `selecionar` → `evidencias` → `redigir` → `revisar` → `ilus
 - A **quantidade de itens** é configurável (`configuracao` `quantidade_itens`, ou
   `Fonte.parametros.selecao`), de 1 a 5.
 - A seção declara **curadoria própria** (`aviso_curadoria`), nunca ranking oficial.
+- A seleção usa apenas os candidatos da **coleta/fonte que disparou a curadoria**;
+  duplicatas do mesmo repositório/modelo são descartadas.
+- A intro usa prompt de curadoria; se a resposta da IA vier inválida, o pipeline usa um
+  texto determinístico com a data da coleta.
 - Cada item abre como **página derivada** da versão publicada:
   `GET /api/publico/item/<slug>/<ordem>`.
 - Custo agregado por execução/postagem (`/api/relatorios/custos`: `por_execucao`,

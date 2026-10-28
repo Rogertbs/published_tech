@@ -214,7 +214,7 @@ class AdminEditorialTests(TestCase):
         resposta = self.client.get("/admin/")
         self.assertEqual(resposta.status_code, 200)
         self.assertContains(resposta, "Produção de notícias")
-        self.assertContains(resposta, "Gerar notícia (RSS)")
+        self.assertContains(resposta, "Produção (tela única)")
         self.assertContains(resposta, "Revisar e aprovar")
 
     def test_aprovar_e_publicar_pela_pagina(self):

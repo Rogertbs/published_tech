@@ -132,6 +132,8 @@ LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY")
 MODEL_ALIAS = os.environ.get("MODEL_ALIAS", AI_MODELO_PADRAO)
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "")
 
+SITE_PUBLICO_URL = os.environ.get("SITE_PUBLICO_URL", "http://127.0.0.1:4321")
+
 ORCAMENTO_DIARIO = os.environ.get("ORCAMENTO_DIARIO", "5")
 ORCAMENTO_MENSAL = os.environ.get("ORCAMENTO_MENSAL", "30")
 ORCAMENTO_MOEDA = os.environ.get("ORCAMENTO_MOEDA", "USD")

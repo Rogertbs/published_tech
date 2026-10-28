@@ -1,4 +1,7 @@
 from django.contrib.admin import AdminSite
+from django.urls import path
+
+from pipeline import producao
 
 GRUPOS = [
     ("Editorial", ["content"]),
@@ -17,6 +20,58 @@ class PainelAdmin(AdminSite):
     site_header = "Published Tech"
     site_title = "Published Tech · Painel"
     index_title = "Painel editorial"
+
+    def get_urls(self):
+        custom = [
+            path("producao/", self.admin_view(producao.index), name="producao_index"),
+            path("producao/noticias/", self.admin_view(producao.criar), name="producao_criar"),
+            path(
+                "producao/tarefas/<int:pk>/status/",
+                self.admin_view(producao.tarefa_status),
+                name="producao_tarefa_status",
+            ),
+            path(
+                "producao/conteudos/<int:pk>/aprovar/",
+                self.admin_view(producao.aprovar),
+                name="producao_aprovar",
+            ),
+            path(
+                "producao/conteudos/<int:pk>/publicar/",
+                self.admin_view(producao.publicar),
+                name="producao_publicar",
+            ),
+            path(
+                "producao/conteudos/<int:pk>/aprovar-publicar/",
+                self.admin_view(producao.aprovar_publicar),
+                name="producao_aprovar_publicar",
+            ),
+            path(
+                "producao/conteudos/<int:pk>/rejeitar/",
+                self.admin_view(producao.rejeitar),
+                name="producao_rejeitar",
+            ),
+            path(
+                "producao/conteudos/<int:pk>/retirar/",
+                self.admin_view(producao.retirar),
+                name="producao_retirar",
+            ),
+            path(
+                "producao/tarefas/<int:pk>/reprocessar/",
+                self.admin_view(producao.reprocessar),
+                name="producao_reprocessar",
+            ),
+            path(
+                "producao/conteudos/<int:pk>/editar/",
+                self.admin_view(producao.editar),
+                name="producao_editar",
+            ),
+            path(
+                "producao/conteudos/<int:pk>/regerar/",
+                self.admin_view(producao.regerar),
+                name="producao_regerar",
+            ),
+        ]
+        return custom + super().get_urls()
 
     def get_app_list(self, request, app_label=None):
         app_list = super().get_app_list(request, app_label)

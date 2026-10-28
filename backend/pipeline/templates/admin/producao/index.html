@@ -1,0 +1,283 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Produção de notícias | {{ block.super }}{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'admin/css/producao.css' %}">
+{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Início</a>
+    &rsaquo; Produção de notícias
+  </div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="pt-producao">
+  <h1>Produção de notícias</h1>
+
+  {% if messages %}
+    <ul class="messagelist">
+      {% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <div class="pt-grid">
+    <section class="module pt-card">
+      <h2>1. Gerar notícia</h2>
+      {% if motor_pausado %}
+        <p class="errornote">Motor pausado. Ative em <a href="{% url 'admin:jobs_configuracaomotor_changelist' %}">Motor e fila</a>.</p>
+      {% endif %}
+      {% if fontes %}
+        <form method="post" action="{% url 'admin:producao_criar' %}">
+          {% csrf_token %}
+          <div class="form-row">
+            <label for="id_fonte">Fonte RSS</label>
+            <select name="fonte" id="id_fonte" required>
+              {% for fonte in fontes %}<option value="{{ fonte.pk }}">{{ fonte.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="button default" {% if motor_pausado %}disabled{% endif %}>Gerar notícia</button>
+        </form>
+      {% else %}
+        <p>Nenhuma fonte RSS habilitada. <a href="{% url 'admin:sources_fonte_changelist' %}?tipo=rss">Cadastrar fonte</a>.</p>
+      {% endif %}
+    </section>
+
+    <section class="module pt-card">
+      <h2>2. Execuções recentes</h2>
+      <table class="pt-tabela">
+        <thead><tr><th>#</th><th>Fonte</th><th>Estado</th><th>Criada</th><th></th></tr></thead>
+        <tbody>
+          {% for item in tarefas %}
+            <tr>
+              <td>{{ item.tarefa.pk }}</td>
+              <td>{{ item.fonte_nome }}</td>
+              <td><span class="pt-badge pt-badge-{{ item.tarefa.estado }}">{{ item.tarefa.get_estado_display }}</span></td>
+              <td>{{ item.tarefa.criado_em|date:"d/m H:i" }}</td>
+              <td><a class="pt-link" href="?tarefa={{ item.tarefa.pk }}">Abrir</a></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="pt-vazio">Nenhuma execução ainda.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <section class="module pt-card">
+    <h2>3. Fila de revisão</h2>
+    <table class="pt-tabela">
+      <thead><tr><th>Título</th><th>Estado</th><th>Atualizado</th><th></th></tr></thead>
+      <tbody>
+        {% for item in fila %}
+          <tr>
+            <td>{{ item.versao.titulo|default:"(sem título)" }}</td>
+            <td><span class="pt-badge pt-badge-{{ item.conteudo.estado }}">{{ item.conteudo.get_estado_display }}</span></td>
+            <td>{{ item.conteudo.atualizado_em|date:"d/m H:i" }}</td>
+            <td><a class="pt-link" href="?conteudo={{ item.conteudo.pk }}">Revisar</a></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="pt-vazio">Nenhum conteúdo aguardando revisão.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% if tarefa or revisao %}
+    <section class="module pt-card pt-revisao" id="revisao">
+      <h2>4. Revisar e publicar</h2>
+
+      {% if tarefa %}
+        <p class="pt-meta">
+          Execução #{{ tarefa.pk }} ·
+          <span class="pt-badge pt-badge-{{ tarefa.estado }}">{{ tarefa.get_estado_display }}</span>
+          {% if tarefa.resultado.fonte %} · {{ tarefa.resultado.fonte }}{% endif %}
+          {% if tarefa.resultado.execucao %}
+            · <a href="{% url 'admin:pipeline_execucao_change' tarefa.resultado.execucao %}">ver etapas</a>
+          {% endif %}
+        </p>
+      {% endif %}
+
+      {% if erro %}
+        <p class="errornote">{{ erro }}</p>
+        {% if pode_reprocessar %}
+          <div class="pt-acoes">
+            <form method="post" action="{% url 'admin:producao_reprocessar' tarefa.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="button default">Gerar novamente</button>
+            </form>
+          </div>
+        {% endif %}
+      {% elif em_andamento %}
+        <p id="pt-status" class="pt-gerando">Gerando notícia… a página atualiza sozinha.</p>
+        <script>
+          (function () {
+            const url = "{% url 'admin:producao_tarefa_status' tarefa.pk %}";
+            const timer = setInterval(function () {
+              fetch(url, { credentials: "same-origin" })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  if (!data.em_andamento) {
+                    clearInterval(timer);
+                    window.location.reload();
+                  }
+                })
+                .catch(function () {});
+            }, 2000);
+          })();
+        </script>
+      {% elif revisao %}
+        <h3>{{ revisao.versao.titulo }}</h3>
+        <p class="pt-meta">
+          <span class="pt-badge pt-badge-{{ revisao.conteudo.estado }}">{{ revisao.conteudo.get_estado_display }}</span>
+          {% if revisao.publicado and revisao.url_publica %}
+            · <a href="{{ revisao.url_publica }}" target="_blank" rel="noopener">ver no site</a>
+          {% endif %}
+        </p>
+
+        {% if falhou_geracao or revisao_vazia %}
+          <div class="pt-alerta"><strong>Geração falhou:</strong> o texto veio vazio. Gere novamente antes de publicar.</div>
+        {% endif %}
+        {% if revisao.motivos %}
+          <div class="pt-alerta"><strong>Revisão:</strong> {{ revisao.motivos|join:", " }}</div>
+        {% endif %}
+
+        <div class="pt-preview">{{ revisao.corpo_html|safe }}</div>
+
+        {% if revisao.itens %}
+          <section class="pt-itens">
+            <h4>Itens da curadoria ({{ revisao.itens|length }})</h4>
+            <ol>
+              {% for item in revisao.itens %}
+                <li>
+                  <strong>{% firstof item.dados.full_name item.dados.id "Item" %}</strong>
+                  {% if item.dados.description %}<span>{{ item.dados.description }}</span>{% endif %}
+                  {% if item.dados.html_url %}
+                    <a href="{{ item.dados.html_url }}" target="_blank" rel="noopener">ver original</a>
+                  {% elif item.dados.url %}
+                    <a href="{{ item.dados.url }}" target="_blank" rel="noopener">ver original</a>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+          </section>
+        {% endif %}
+
+        {% if revisao.fontes or revisao.evidencias %}
+          <details class="pt-evidencias">
+            <summary>Evidências e fontes</summary>
+            <ul>
+              {% for url in revisao.fontes %}
+                <li><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></li>
+              {% endfor %}
+              {% for evidencia in revisao.evidencias %}
+                <li>
+                  {% if evidencia.url %}<a href="{{ evidencia.url }}" target="_blank" rel="noopener">{{ evidencia.url }}</a>{% else %}Sem URL{% endif %}
+                  {% if evidencia.trecho %} — {{ evidencia.trecho|truncatechars:200 }}{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+
+        <details class="pt-editor">
+          <summary>Editar texto</summary>
+          <form method="post" action="{% url 'admin:producao_editar' revisao.conteudo.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <label>Título
+              <input type="text" name="titulo" value="{{ revisao.versao.titulo }}" maxlength="300" required>
+            </label>
+            <label>Resumo
+              <textarea name="resumo" rows="3">{{ revisao.versao.resumo }}</textarea>
+            </label>
+            <label>Corpo
+              <textarea name="corpo" rows="18" required>{{ revisao.versao.corpo }}</textarea>
+            </label>
+            <div><button type="submit" class="button default">Salvar edição</button></div>
+          </form>
+        </details>
+
+        <div class="pt-acoes">
+          {% if precisa_reprocessar %}
+            {% if pode_reprocessar %}
+              <form method="post" action="{% url 'admin:producao_reprocessar' tarefa.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="button default">Gerar novamente</button>
+              </form>
+            {% endif %}
+            {% if not revisao.publicado %}
+              <form method="post" action="{% url 'admin:producao_rejeitar' revisao.conteudo.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{% url 'admin:producao_index' %}">
+                <button type="submit" class="button">Rejeitar</button>
+              </form>
+            {% endif %}
+          {% elif not revisao.publicado %}
+            {% if not revisao.aprovada %}
+              <form method="post" action="{% url 'admin:producao_aprovar' revisao.conteudo.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="button">Aprovar</button>
+              </form>
+              <form method="post" action="{% url 'admin:producao_aprovar_publicar' revisao.conteudo.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="button default">Aprovar e publicar</button>
+              </form>
+            {% else %}
+              <form method="post" action="{% url 'admin:producao_publicar' revisao.conteudo.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="button default">Publicar</button>
+              </form>
+            {% endif %}
+            <form method="post" action="{% url 'admin:producao_rejeitar' revisao.conteudo.pk %}">
+              {% csrf_token %}<input type="hidden" name="next" value="{% url 'admin:producao_index' %}">
+              <button type="submit" class="button">Rejeitar</button>
+            </form>
+            {% if pode_regerar %}
+              <form method="post" action="{% url 'admin:producao_regerar' revisao.conteudo.pk %}"
+                    onsubmit="return confirm('Gerar uma nova versão desta notícia? A versão atual fica no histórico.');">
+                {% csrf_token %}
+                <button type="submit" class="button">Regerar notícia</button>
+              </form>
+            {% endif %}
+          {% else %}
+            <form method="post" action="{% url 'admin:producao_retirar' revisao.conteudo.pk %}">
+              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <button type="submit" class="button">Retirar do público</button>
+            </form>
+          {% endif %}
+          {% if revisao.versao %}
+            <a class="button" href="{% url 'admin:content_versao_change' revisao.versao.pk %}">Abrir no admin</a>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="pt-vazio">Nenhum rascunho para revisar.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if publicados %}
+    <section class="module pt-card">
+      <h2>Publicados recentemente</h2>
+      <table class="pt-tabela">
+        <thead><tr><th>Título</th><th>Publicado</th><th></th></tr></thead>
+        <tbody>
+          {% for item in publicados %}
+            <tr>
+              <td>{{ item.versao.titulo|default:item.conteudo.slug }}</td>
+              <td>{{ item.conteudo.publicado_em|date:"d/m H:i" }}</td>
+              <td>
+                <a class="pt-link" href="?conteudo={{ item.conteudo.pk }}">Abrir</a>
+                {% if item.url_publica %}· <a class="pt-link" href="{{ item.url_publica }}" target="_blank" rel="noopener">Ver no site</a>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

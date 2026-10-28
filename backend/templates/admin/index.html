@@ -15,14 +15,14 @@
 <div id="content-main">
   <div class="module pt-atalhos" id="producao">
     <h2>Produção de notícias</h2>
-    <p class="pt-atalhos-ajuda">Para gerar: escolha a fonte RSS e use a ação “Produzir notícia”.</p>
+    <p class="pt-atalhos-ajuda">Gerar, revisar, aprovar e publicar em uma única tela.</p>
     <div class="pt-atalhos-grid">
-      <a class="pt-atalho" href="{% url 'admin:sources_fonte_changelist' %}?tipo=rss">Gerar notícia (RSS)</a>
+      <a class="pt-atalho" href="{% url 'admin:producao_index' %}">Produção (tela única)</a>
       <a class="pt-atalho" href="{% url 'admin:content_conteudo_changelist' %}?fila=revisao">Revisar e aprovar</a>
       <a class="pt-atalho" href="{% url 'admin:content_conteudo_changelist' %}?fila=rascunho">Rascunhos</a>
       <a class="pt-atalho" href="{% url 'admin:content_conteudo_changelist' %}?estado=aprovado">Aprovados para publicar</a>
       <a class="pt-atalho" href="{% url 'admin:content_conteudo_changelist' %}?estado=publicado">Publicados</a>
-      <a class="pt-atalho" href="{% url 'admin:pipeline_execucao_changelist' %}">Execuções</a>
+      <a class="pt-atalho" href="{% url 'admin:sources_fonte_changelist' %}?tipo=rss">Fontes RSS</a>
     </div>
   </div>
   <div class="module pt-atalhos">

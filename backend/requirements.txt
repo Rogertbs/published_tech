@@ -5,3 +5,5 @@ gunicorn>=21.0
 whitenoise>=6.6
 feedparser>=6.0
 langgraph>=1.0,<2
+markdown>=3.7
+nh3>=0.2
