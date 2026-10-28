@@ -1,9 +1,14 @@
+from django.db import transaction
+
+from ai.models import ChamadaIA
 from content.models import Conteudo, Secao
+from pipeline.models import EstadoExecucao, EtapaExecucao
 from pipeline.motor import SECAO_TIPO, executar_pipeline
 from sources import services as sources
 from sources.models import EstadoColeta, Fonte, TipoFonte
 
 SECOES_CURADORIA = (Secao.DESTAQUES_GITHUB, Secao.RADAR_HF)
+ETAPAS_RETENTATIVA = ("redigir", "revisar", "ilustrar", "salvar")
 
 
 class SemFonte(Exception):
@@ -19,12 +24,16 @@ def _kwargs(http_get, sleep):
     return kwargs
 
 
-def _resultado(fonte, coleta, execucao):
-    conteudo = Conteudo.objects.filter(slug=f"{execucao.secao}-{execucao.pk}").first()
+def resultado_da_execucao(
+    execucao, fonte_nome, coleta_estado="ok", coleta_erro="", conteudo=None
+):
+    if conteudo is None:
+        conteudo = Conteudo.objects.filter(slug=f"{execucao.secao}-{execucao.pk}").first()
     versao = conteudo.versao_em_edicao if conteudo else None
     return {
-        "fonte": fonte.nome,
-        "coleta": coleta.estado,
+        "fonte": fonte_nome,
+        "coleta": coleta_estado,
+        "coleta_erro": coleta_erro,
         "execucao": execucao.pk,
         "estado_execucao": execucao.estado,
         "conteudo": conteudo.slug if conteudo else None,
@@ -36,12 +45,45 @@ def _resultado(fonte, coleta, execucao):
     }
 
 
+def _resultado(fonte, coleta, execucao):
+    return resultado_da_execucao(execucao, fonte.nome, coleta.estado, coleta.erro)
+
+
+def _resetar_execucao(execucao) -> None:
+    EtapaExecucao.objects.filter(
+        execucao=execucao, nome__in=ETAPAS_RETENTATIVA
+    ).delete()
+    execucao.estado = EstadoExecucao.PENDENTE
+    execucao.motivo = ""
+    execucao.erro = ""
+    execucao.finalizado_em = None
+    execucao.save(update_fields=["estado", "motivo", "erro", "finalizado_em"])
+
+
+@transaction.atomic
+def preparar_retentativa(execucao) -> None:
+    conteudo = Conteudo.objects.filter(slug=f"{execucao.secao}-{execucao.pk}").first()
+    if conteudo is not None:
+        if conteudo.esta_publicado:
+            raise ValueError("Conteúdo já publicado não pode ser reprocessado.")
+        ChamadaIA.objects.filter(execucao=execucao, conteudo_id=conteudo.pk).update(
+            conteudo_id=None
+        )
+        conteudo.delete()
+    _resetar_execucao(execucao)
+
+
+@transaction.atomic
+def preparar_regeracao(execucao) -> None:
+    _resetar_execucao(execucao)
+
+
 def _executar(fonte, secao, limite, http_get, sleep):
     coleta = sources.coletar(fonte, **_kwargs(http_get, sleep))
     if coleta.estado != EstadoColeta.OK:
         return {"fonte": fonte.nome, "coleta": coleta.estado, "erro": coleta.erro, "conteudo": None}
     sources.selecionar_candidatos(coleta, limite=limite)
-    execucao = executar_pipeline(secao=secao)
+    execucao = executar_pipeline(secao=secao, coleta=coleta)
     return _resultado(fonte, coleta, execucao)
 
 

@@ -60,6 +60,8 @@ class PipelineTests(TestCase):
         self.assertEqual(conteudo.versao_em_edicao_id, versao.pk)
         self.assertTrue(versao.corpo)
         self.assertEqual(Evidencia.objects.filter(versao=versao).count(), 2)
+        self.assertIn("curadoria própria", versao.titulo.lower())
+        self.assertIn("Seleção própria", versao.corpo)
         self.assertEqual(ChamadaIA.objects.filter(finalidade="redacao").count(), 1)
         self.assertEqual(ChamadaIA.objects.get().execucao_id, execucao.pk)
 
@@ -207,6 +209,31 @@ class CuradoriaTests(TestCase):
         self.assertEqual(resultado["itens"], 2)
         conteudo = Conteudo.objects.get(slug=resultado["conteudo"])
         self.assertEqual(conteudo.secao, "destaques-github")
+
+    def test_curadoria_so_usa_candidatos_da_coleta_atual(self):
+        antiga = Fonte.objects.create(nome="GH antiga", tipo=TipoFonte.GITHUB, parametros={})
+        registro_antigo = RegistroNormalizado.objects.create(
+            fonte=antiga,
+            chave_externa="999",
+            dados=dados("999", "org/antigo", estrelas=999999),
+            coletado_em=timezone.now(),
+        )
+        Candidato.objects.create(
+            registro=registro_antigo, pontuacao=999999, selecionado=True
+        )
+
+        fonte = Fonte.objects.create(nome="GH nova", tipo=TipoFonte.GITHUB, parametros={"selecao": 2})
+        resultado = produzir_curadoria(
+            "destaques-github",
+            fonte=fonte,
+            http_get=gh_get([repo(1, "org/a", 100), repo(2, "org/b", 50)]),
+            sleep=lambda s: None,
+        )
+        conteudo = Conteudo.objects.get(slug=resultado["conteudo"])
+        nomes = list(
+            conteudo.versao_em_edicao.itens.values_list("dados__full_name", flat=True)
+        )
+        self.assertEqual(nomes, ["org/a", "org/b"])
 
     def test_endpoint_curadorias_enfileira(self):
         from jobs.models import Tarefa

@@ -26,6 +26,10 @@ SECAO_TIPO = {
     Secao.NOTICIAS: TipoFonte.RSS,
 }
 SECOES_LISTA = {Secao.DESTAQUES_GITHUB, Secao.RADAR_HF}
+SECAO_TITULO = {
+    Secao.DESTAQUES_GITHUB: "Destaques GitHub",
+    Secao.RADAR_HF: "Radar Hugging Face",
+}
 TIPO_ITEM = {
     TipoFonte.GITHUB: Item.TipoItem.REPOSITORIO,
     TipoFonte.HUGGINGFACE: Item.TipoItem.MODELO,
@@ -36,11 +40,19 @@ PROMPT_PADRAO = (
     "traduza-as. Comece com uma linha no formato 'TÍTULO: <título curto em português>' "
     "e depois redija uma análise curta e prática, com base apenas nas evidências."
 )
+PROMPT_CURADORIA = (
+    "Você é curador editorial de tecnologia. Escreva em português do Brasil uma "
+    "introdução curta (2 a 3 frases) para uma curadoria própria. Não invente fatos, "
+    "métricas, rankings ou nomes que não estejam nas evidências e não diga que é um "
+    "ranking oficial. Comece com uma linha exatamente no formato "
+    "'TÍTULO: <título curto em português>' e depois a introdução."
+)
 
 
 class EstadoPipeline(TypedDict, total=False):
     execucao_id: int
     secao: str
+    coleta_id: int
     candidatos: list
     candidatos_deduplicados: int
     evidencias: list
@@ -83,7 +95,25 @@ def _config_deduplicacao(campos: dict) -> tuple[bool, int | None]:
         return deduplicar, None
 
 
-def _selecionar_candidatos(secao: str, campos: dict) -> tuple[list[Candidato], int]:
+def _unicos(candidatos, limite: int) -> tuple[list[Candidato], int]:
+    vistos = set()
+    selecionados = []
+    duplicados = 0
+    for candidato in candidatos:
+        chave = (candidato.registro.fonte.tipo, candidato.registro.chave_externa)
+        if chave in vistos:
+            duplicados += 1
+            continue
+        vistos.add(chave)
+        selecionados.append(candidato)
+        if len(selecionados) >= limite:
+            break
+    return selecionados, duplicados
+
+
+def _selecionar_candidatos(
+    secao: str, campos: dict, coleta_id: int | None = None
+) -> tuple[list[Candidato], int]:
     base = (
         Candidato.objects.filter(selecionado=True)
         .select_related("registro", "registro__fonte")
@@ -92,17 +122,21 @@ def _selecionar_candidatos(secao: str, campos: dict) -> tuple[list[Candidato], i
     tipo = SECAO_TIPO.get(secao)
     if tipo:
         base = base.filter(registro__fonte__tipo=tipo)
+    if coleta_id:
+        base = base.filter(registro__coleta_id=coleta_id)
 
+    limite = _quantidade(secao, campos)
     deduplicar, janela = _config_deduplicacao(campos)
     if not deduplicar:
-        return list(base[: _quantidade(secao, campos)]), 0
+        selecionados, duplicados = _unicos(base, limite)
+        return selecionados, duplicados
 
     elegivel = Q(registro__usado_em__isnull=True)
     if janela is not None:
         elegivel |= Q(registro__usado_em__lt=timezone.now() - timedelta(days=janela))
     disponiveis = base.filter(elegivel)
-    selecionados = list(disponiveis[: _quantidade(secao, campos)])
-    deduplicados = base.count() - disponiveis.count()
+    selecionados, duplicados = _unicos(disponiveis, limite)
+    deduplicados = base.count() - disponiveis.count() + duplicados
     return selecionados, deduplicados
 
 
@@ -191,8 +225,16 @@ def etapa(nome):
 @etapa("selecionar")
 def no_selecionar(execucao, state):
     campos = _campos_da_execucao(execucao, state["secao"])
-    candidatos, deduplicados = _selecionar_candidatos(state["secao"], campos)
-    return {"candidatos": [c.pk for c in candidatos], "candidatos_deduplicados": deduplicados}
+    candidatos, deduplicados = _selecionar_candidatos(
+        state["secao"], campos, coleta_id=state.get("coleta_id")
+    )
+    saida = {
+        "candidatos": [c.pk for c in candidatos],
+        "candidatos_deduplicados": deduplicados,
+    }
+    if state.get("coleta_id"):
+        saida["coleta_id"] = state["coleta_id"]
+    return saida
 
 
 @etapa("evidencias")
@@ -233,10 +275,46 @@ def no_evidencias(execucao, state):
     }
 
 
+def _texto_curadoria(execucao, state) -> str:
+    titulo = SECAO_TITULO.get(execucao.secao, execucao.secao)
+    data = timezone.localdate().strftime("%d/%m/%Y")
+    total = len(state.get("afirmacoes", []))
+    return (
+        f"TÍTULO: {titulo} — curadoria própria ({data})\n\n"
+        f"Seleção própria com {total} itens em destaque. Coleta em {data}."
+    )
+
+
+def _curadoria_valida(texto: str) -> bool:
+    linhas = [linha.strip() for linha in (texto or "").splitlines() if linha.strip()]
+    if not linhas:
+        return False
+    primeira = linhas[0].upper()
+    if not (primeira.startswith("TÍTULO:") or primeira.startswith("TITULO:")):
+        return False
+    baixo = (texto or "").lower()
+    ruins = (
+        "não há dados",
+        "nao ha dados",
+        "conteúdo fornecido",
+        "conteudo fornecido",
+        "sem fornecer",
+        "não contém",
+        "nao contem",
+    )
+    return not any(trecho in baixo for trecho in ruins)
+
+
 @etapa("redigir")
 def no_redigir(execucao, state):
     campos = configuracao.resolver(secao=state["secao"])
-    prompt = campos.get("prompt") or PROMPT_PADRAO
+    lista = execucao.secao in SECOES_LISTA
+    prompt = campos.get("prompt") or (PROMPT_CURADORIA if lista else PROMPT_PADRAO)
+    if state.get("regerar_conteudo_id"):
+        prompt = (
+            f"{prompt}\n\nReescreva com abordagem e vocabulário diferentes da versão "
+            "anterior, mantendo os mesmos fatos e evidências."
+        )
     resposta = instrumentation.executar_texto(
         prompt,
         finalidade="redacao",
@@ -244,6 +322,9 @@ def no_redigir(execucao, state):
         execucao=execucao,
         fonte_texto=state.get("fonte_resumo", ""),
     )
+    if lista:
+        texto = resposta.texto if _curadoria_valida(resposta.texto) else _texto_curadoria(execucao, state)
+        return {"texto": texto, "redacao_status": "sucesso"}
     return {"texto": resposta.texto, "redacao_status": resposta.chamada.status}
 
 
@@ -278,6 +359,9 @@ def no_ilustrar(execucao, state):
 def no_salvar(execucao, state):
     candidatos_ids = state.get("candidatos", [])
     revisao = state.get("revisao", {})
+    alvo = None
+    if state.get("regerar_conteudo_id"):
+        alvo = Conteudo.objects.filter(pk=state["regerar_conteudo_id"]).first()
     campos = _campos_da_execucao(execucao, state["secao"])
     deduplicar, janela = _config_deduplicacao(campos)
     if not candidatos_ids and state.get("candidatos_deduplicados", 0) > 0:
@@ -286,6 +370,8 @@ def no_salvar(execucao, state):
     hash_origem = _hash_origem(candidatos_ids)
     if deduplicar and hash_origem:
         recentes = Versao.objects.filter(hash_origem=hash_origem)
+        if alvo is not None:
+            recentes = recentes.exclude(conteudo=alvo)
         if janela is not None:
             recentes = recentes.filter(criado_em__gte=timezone.now() - timedelta(days=janela))
         if recentes.exists():
@@ -299,9 +385,14 @@ def no_salvar(execucao, state):
     titulo_gerado, corpo = _extrair_titulo(state.get("texto", ""))
     titulo = titulo_gerado or (afirmacoes[0]["texto"].split(":")[0] if afirmacoes else state["secao"])
     resumo = _sem_markdown(corpo)[:300] or state.get("fonte_resumo", "")[:500]
-    conteudo = Conteudo.objects.create(
-        slug=f"{state['secao']}-{execucao.pk}", secao=state["secao"], tipo=tipo, estado=estado
-    )
+    if alvo is not None:
+        conteudo = alvo
+        if conteudo.esta_publicado:
+            estado = EstadoConteudo.PUBLICADO_EM_EDICAO
+    else:
+        conteudo = Conteudo.objects.create(
+            slug=f"{state['secao']}-{execucao.pk}", secao=state["secao"], tipo=tipo, estado=estado
+        )
     metadados = {
         "evidencias": state.get("evidencias", []),
         "imagem": state.get("imagem", {}),
@@ -309,6 +400,8 @@ def no_salvar(execucao, state):
         "fontes": _urls_fontes(candidatos_ids),
         "candidatos_deduplicados": state.get("candidatos_deduplicados", 0),
     }
+    if alvo is not None and conteudo.versao_em_edicao_id:
+        metadados["regerado_de"] = conteudo.versao_em_edicao_id
     if tipo == TipoConteudo.LISTA:
         metadados["aviso_curadoria"] = f"{AVISO_CURADORIA} Coleta em {timezone.now().date().isoformat()}."
     versao = Versao.objects.create(
@@ -321,8 +414,9 @@ def no_salvar(execucao, state):
     )
     if tipo == TipoConteudo.LISTA:
         _criar_itens(versao, candidatos_ids)
+    conteudo.estado = estado
     conteudo.versao_em_edicao = versao
-    conteudo.save(update_fields=["versao_em_edicao", "atualizado_em"])
+    conteudo.save(update_fields=["versao_em_edicao", "estado", "atualizado_em"])
     Evidencia.objects.filter(pk__in=state.get("evidencias", [])).update(versao=versao)
     ChamadaIA.objects.filter(execucao=execucao, conteudo_id__isnull=True).update(
         conteudo_id=conteudo.pk
@@ -384,7 +478,9 @@ def construir_grafo():
     return grafo.compile(checkpointer=InMemorySaver())
 
 
-def executar_pipeline(*, tarefa=None, secao=Secao.DESTAQUES_GITHUB, execucao=None) -> Execucao:
+def executar_pipeline(
+    *, tarefa=None, secao=Secao.DESTAQUES_GITHUB, execucao=None, coleta=None
+) -> Execucao:
     if execucao is None:
         snapshot = configuracao.capturar_snapshot(secao=secao, tarefa=tarefa)
         execucao = Execucao.objects.create(
@@ -401,8 +497,12 @@ def executar_pipeline(*, tarefa=None, secao=Secao.DESTAQUES_GITHUB, execucao=Non
         execucao.save(update_fields=["estado", "iniciado_em"])
 
     state: EstadoPipeline = {"execucao_id": execucao.pk, "secao": secao}
+    if coleta is not None:
+        state["coleta_id"] = coleta.pk
     for etapa_concluida in execucao.etapas.order_by("id"):
         state.update(etapa_concluida.saida)
+    if tarefa is not None and tarefa.parametros.get("regerar_conteudo_id"):
+        state["regerar_conteudo_id"] = tarefa.parametros["regerar_conteudo_id"]
 
     try:
         grafo = construir_grafo()
