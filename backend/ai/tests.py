@@ -6,7 +6,15 @@ from django.utils import timezone
 
 from ai import instrumentation
 from ai.models import ChamadaIA, OrigemCusto, PrecoModelo, StatusChamada
-from ai.providers import MockProvedor, OpenRouterProvedor, ProvedorIncerto, ProvedorNaoConfigurado, ProvedorTimeout
+from ai.providers import (
+    LiteLLMProvedor,
+    MockProvedor,
+    OpenRouterProvedor,
+    ProvedorIncerto,
+    ProvedorNaoConfigurado,
+    ProvedorTimeout,
+    obter_provedor,
+)
 
 
 def or_post(payload, status=200):
@@ -173,3 +181,49 @@ class InstrumentacaoTests(TestCase):
         self.assertEqual(chamada.etapa, "revisar")
         self.assertEqual(chamada.conteudo_id, 42)
         self.assertEqual(chamada.correlacao, {"run": "abc"})
+
+
+class LiteLLMTests(TestCase):
+    @override_settings(
+        LITELLM_BASE_URL="http://litellm:4000",
+        LITELLM_API_KEY="sk-admin",
+        MODEL_ALIAS="qwen-local",
+    )
+    def test_url_v1_e_model_alias(self):
+        chamadas = []
+
+        def http_post(url, headers, body):
+            chamadas.append((url, headers, body))
+            return 200, {}, json.dumps(payload_openrouter())
+
+        provedor = LiteLLMProvedor(http_post=http_post)
+        provedor.gerar_texto("oi", {}, "")
+
+        url, headers, body = chamadas[0]
+        self.assertEqual(url, "http://litellm:4000/v1/chat/completions")
+        self.assertEqual(headers["Authorization"], "Bearer sk-admin")
+        self.assertEqual(json.loads(body)["model"], "qwen-local")
+
+    @override_settings(
+        LITELLM_BASE_URL="http://litellm:4000/v1",
+        LITELLM_API_KEY="sk-admin",
+        MODEL_ALIAS="qwen-local",
+    )
+    def test_nao_duplica_v1(self):
+        chamadas = []
+
+        def http_post(url, headers, body):
+            chamadas.append((url, headers, body))
+            return 200, {}, json.dumps(payload_openrouter())
+
+        LiteLLMProvedor(http_post=http_post).gerar_texto("oi", {}, "")
+        self.assertEqual(chamadas[0][0], "http://litellm:4000/v1/chat/completions")
+
+    @override_settings(AI_PROVIDER="litellm", LITELLM_API_KEY="sk-admin")
+    def test_obter_provedor_litellm(self):
+        self.assertIsInstance(obter_provedor(), LiteLLMProvedor)
+
+    @override_settings(AI_PROVIDER="litellm", LITELLM_API_KEY=None)
+    def test_sem_chave_levanta_erro(self):
+        with self.assertRaises(ProvedorNaoConfigurado):
+            obter_provedor()

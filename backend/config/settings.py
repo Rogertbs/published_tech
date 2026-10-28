@@ -127,6 +127,10 @@ AI_MODELO_PADRAO = os.environ.get("AI_MODELO_PADRAO", "meta-llama/llama-3.3-70b-
 AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS", "30"))
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+LITELLM_BASE_URL = os.environ.get("LITELLM_BASE_URL", "http://127.0.0.1:4000")
+LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY")
+MODEL_ALIAS = os.environ.get("MODEL_ALIAS", AI_MODELO_PADRAO)
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "")
 
 ORCAMENTO_DIARIO = os.environ.get("ORCAMENTO_DIARIO", "5")
 ORCAMENTO_MENSAL = os.environ.get("ORCAMENTO_MENSAL", "30")

@@ -161,9 +161,13 @@ que registra uma `ChamadaIA` (provedor, modelo, finalidade, etapa, correlação,
 timestamps, duração, status, tentativa, request id, tokens, moeda, preço, custo e
 origem do custo).
 
-- Provedor substituível via `AI_PROVIDER`: `mock` (padrão, simulado, sem custo) e
-  `openrouter` (exige `OPENROUTER_API_KEY`; **sem fallback silencioso** se faltar).
-- Dev usa modelos **full free** da OpenRouter (`AI_MODELO_PADRAO`).
+- Provedor substituível via `AI_PROVIDER`: `mock` (padrão, simulado, sem custo),
+  `openrouter` (exige `OPENROUTER_API_KEY`) e `litellm` (proxy OpenAI-compatível;
+  exige `LITELLM_BASE_URL` e `LITELLM_API_KEY`, usa `MODEL_ALIAS` como modelo).
+  **Sem fallback silencioso** se faltar credencial.
+- Dev usa modelos **full free** da OpenRouter (`AI_MODELO_PADRAO`) ou o alias local do
+  LiteLLM (`MODEL_ALIAS`). `EMBEDDING_MODEL` apenas reserva o nome do modelo de
+  embeddings para uso futuro.
 - Custo: **informado** pelo provedor, senão **estimado** por `PrecoModelo` (USD), senão
   **desconhecido**. Consumo desconhecido **nunca** é gravado como zero.
 - Falha, timeout e resultado incerto recebem status próprio (`erro`, `timeout`,

@@ -55,6 +55,7 @@ class MockProvedor(ProvedorIA):
 
 class OpenRouterProvedor(ProvedorIA):
     nome = "openrouter"
+    rotulo = "OpenRouter"
     pago = True
 
     def __init__(self, api_key=None, base_url=None, modelo_padrao=None, http_post=None):
@@ -69,28 +70,22 @@ class OpenRouterProvedor(ProvedorIA):
         modelo = modelo or self.modelo_padrao
         corpo = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
         corpo.update(parametros or {})
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://published.tech",
-            "X-Title": "Published Tech",
-        }
         url = f"{self.base_url}/chat/completions"
-        status, _, body = self._http_post(url, headers, json.dumps(corpo))
+        status, _, body = self._http_post(url, self._headers(), json.dumps(corpo))
 
         if status == 408:
-            raise ProvedorTimeout(f"OpenRouter respondeu HTTP {status}.")
+            raise ProvedorTimeout(f"{self.rotulo} respondeu HTTP {status}.")
         if status >= 500:
-            raise ProvedorIncerto(f"OpenRouter respondeu HTTP {status} (resultado incerto).")
+            raise ProvedorIncerto(f"{self.rotulo} respondeu HTTP {status} (resultado incerto).")
         if status >= 400:
-            raise ProvedorErro(f"OpenRouter respondeu HTTP {status}.")
+            raise ProvedorErro(f"{self.rotulo} respondeu HTTP {status}.")
 
         try:
             payload = json.loads(body)
             texto = payload["choices"][0]["message"]["content"]
         except (ValueError, KeyError, IndexError) as exc:
             raise ProvedorIncerto(
-                f"Resposta 200 inesperada do OpenRouter (pode ter sido cobrada): {exc}"
+                f"Resposta 200 inesperada do {self.rotulo} (pode ter sido cobrada): {exc}"
             ) from exc
 
         usage = payload.get("usage") or {}
@@ -105,6 +100,14 @@ class OpenRouterProvedor(ProvedorIA):
             tokens_cache=cache,
             custo_informado=Decimal(str(custo)) if custo is not None else None,
         )
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://published.tech",
+            "X-Title": "Published Tech",
+        }
 
     def _post(self, url: str, headers: dict, body: str):
         request = urllib.request.Request(url, data=body.encode(), headers=headers, method="POST")
@@ -124,10 +127,39 @@ class OpenRouterProvedor(ProvedorIA):
             raise ProvedorIncerto(str(exc)) from exc
 
 
+class LiteLLMProvedor(OpenRouterProvedor):
+    nome = "litellm"
+    rotulo = "LiteLLM"
+    pago = False
+
+    def __init__(self, api_key=None, base_url=None, modelo_padrao=None, http_post=None):
+        api_key = api_key or getattr(settings, "LITELLM_API_KEY", None)
+        if not api_key:
+            raise ProvedorNaoConfigurado("LITELLM_API_KEY não configurada.")
+        base_url = (base_url or getattr(settings, "LITELLM_BASE_URL")).rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url = f"{base_url}/v1"
+        modelo_padrao = modelo_padrao or getattr(settings, "MODEL_ALIAS", None)
+        super().__init__(
+            api_key=api_key,
+            base_url=base_url,
+            modelo_padrao=modelo_padrao,
+            http_post=http_post,
+        )
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+
 def obter_provedor() -> ProvedorIA:
     nome = getattr(settings, "AI_PROVIDER", "mock")
     if nome == "openrouter":
         return OpenRouterProvedor()
+    if nome == "litellm":
+        return LiteLLMProvedor()
     if nome == "mock":
         return MockProvedor()
     raise ProvedorNaoConfigurado(f"Provedor de IA '{nome}' desconhecido.")
