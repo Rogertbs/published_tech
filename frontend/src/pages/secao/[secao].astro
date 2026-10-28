@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import ConteudoCard from "../../components/ConteudoCard.astro";
+import ConteudoGrid from "../../components/ConteudoGrid.astro";
 import EmptyState from "../../components/EmptyState.astro";
 import ErrorState from "../../components/ErrorState.astro";
 import { getSecao } from "../../lib/api";
@@ -20,9 +20,7 @@ if (!data) {
       {data.itens.length === 0 ? (
         <EmptyState texto="Sem conteúdo publicado nesta seção." />
       ) : (
-        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {data.itens.map((item) => <ConteudoCard item={item} />)}
-        </div>
+        <ConteudoGrid itens={data.itens} />
       )}
     </>
   )}

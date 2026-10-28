@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import ConteudoCard from "../components/ConteudoCard.astro";
+import ConteudoGrid from "../components/ConteudoGrid.astro";
 import Kicker from "../components/Kicker.astro";
 import EmptyState from "../components/EmptyState.astro";
 import { getHome, formatDate } from "../lib/api";
@@ -45,9 +45,7 @@ const vazio = home.artigos.length === 0 && home.destaques_github.length === 0 &&
 
       <section>
         <h2 class="mb-4 border-b border-borda pb-1 text-xl font-bold text-principal">Últimas</h2>
-        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {demais.map((item) => <ConteudoCard item={item} />)}
-        </div>
+        <ConteudoGrid itens={demais} />
       </section>
 
       {blocos.map((bloco) => (
@@ -58,9 +56,7 @@ const vazio = home.artigos.length === 0 && home.destaques_github.length === 0 &&
           {bloco.itens.length === 0 ? (
             <EmptyState texto="Sem itens por enquanto." />
           ) : (
-            <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {bloco.itens.map((item) => <ConteudoCard item={item} />)}
-            </div>
+            <ConteudoGrid itens={bloco.itens} />
           )}
         </section>
       ))}

@@ -1,0 +1,43 @@
+---
+import ConteudoCard from "./ConteudoCard.astro";
+
+interface Item {
+  slug: string;
+  titulo: string;
+  resumo?: string;
+  publicado_em?: string;
+  secao: string;
+}
+
+interface Props {
+  itens: Item[];
+}
+
+const { itens } = Astro.props;
+---
+<div class="flex flex-wrap gap-6">
+  {itens.map((item) => (
+    <div class="conteudo-grid-item">
+      <ConteudoCard item={item} />
+    </div>
+  ))}
+</div>
+
+<style>
+  .conteudo-grid-item {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .conteudo-grid-item {
+      flex-basis: calc(50% - 0.75rem);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .conteudo-grid-item {
+      flex-basis: calc(33.333% - 1rem);
+    }
+  }
+</style>
